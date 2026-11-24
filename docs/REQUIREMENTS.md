@@ -371,8 +371,13 @@ Clarifies §8.4, which lists level progression although multiple levels are a fu
 - The MVP has a single level plus restart.
 - No level-progression system is built for the MVP.
 
+#### D8 — Manual cancellation
+
+Resolves: whether a wall can be partially drawn and then canceled manually.
+
+- The player cannot cancel a drawing in progress.
+- A drawing ends only when it is released (and then validated) or when the game cancels it: an active orb touches it (D2), or the browser cancels the input.
+
 ### 11.2 Open Decisions
 
-The following details still require validation during prototyping:
-
-- Whether a wall can be partially drawn and then canceled manually.
+No open decisions remain for the MVP.

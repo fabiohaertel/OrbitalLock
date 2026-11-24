@@ -5,8 +5,8 @@ games. Capture the moving orbs by drawing walls with your mouse or finger, and
 trap every orb inside a region small enough to lock it in place.
 
 > **Status: early development.** The project scaffolding, the core geometry
-> library, the orb physics and drawing input processing are done, but the game
-> isn't playable yet. Opening it in a browser
+> library, the orb physics, drawing input, wall creation and region detection
+> are done, but the game isn't playable yet. Opening it in a browser
 > currently shows only a title screen. See [Roadmap](#roadmap) for progress.
 
 ## How to play
@@ -81,9 +81,9 @@ launcher that works around a Windows path issue (see
 ```text
 src/
   config/     gameplay configuration and defaults
-  geometry/   vectors, segments, polylines, polygons
+  geometry/   vectors, segments, polylines, polygons, region detection
   physics/    orbs, fixed-timestep simulation, collisions
-  drawing/    drawing input: sampling, clamping, simplification, minimum length
+  drawing/    drawing input, wall validation and wall creation
   layout/     screen-to-arena coordinate mapping
   scenes/     Phaser scenes
   main.ts     game entry point
@@ -104,8 +104,8 @@ Development follows the phases in [docs/ROADMAP.md](docs/ROADMAP.md):
 - [x] Phase 1 — Geometry primitives
 - [x] Phase 2 — Physics
 - [x] Phase 3 — Drawing input
-- [ ] Phase 4 — Drawing validation and walls
-- [ ] Phase 5 — Region detection
+- [x] Phase 4 — Drawing validation and walls
+- [x] Phase 5 — Region detection
 - [ ] Phase 6 — Capture rules
 - [ ] Phase 7 — Game logic (win, lose, score, restart)
 - [ ] Phase 8 — Rendering, HUD and screens

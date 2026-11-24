@@ -17,13 +17,13 @@ with them, follow the requirements. Design decisions D1–D7 are in
 ## Status
 
 | # | Phase | Status | Notes |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | 0 | Decisions and scaffolding | ✅ Done (2026-11-24) | Vitest runs via `scripts/vitest.mjs` (see [DECISIONS.md](DECISIONS.md)) |
 | 1 | Geometry primitives | ✅ Done (2026-11-24) | `src/geometry/`; default distance tolerance `DEFAULT_EPSILON` = 1e-6; RDP simplification is O(n²) worst case (fine for freehand path sizes) |
 | 2 | Physics | ✅ Done (2026-11-24) | `src/physics/`; constant-speed model (see [DECISIONS.md](DECISIONS.md)); walls passed as `Segment[]`; logic only, no rendering yet; orb–orb pairs checked O(n²) |
 | 3 | Drawing input and path processing | ✅ Done (2026-11-24) | `src/drawing/`, `src/layout/arenaTransform.ts`; pure logic, not yet wired to Phaser input (must handle `pointerupoutside` when wired); drawings start only inside the arena |
-| 4 | Drawing validation and wall creation | ⬜ Not started | Needs answer to the open decision in §11.2 (manual cancel) |
-| 5 | Region detection | ⬜ Not started | |
+| 4 | Drawing validation and wall creation | ✅ Done (2026-11-24) | `WallBuilder` in `src/drawing/`; no manual cancel (D8); snap distance 15; caller must call `checkOrbContact` after each physics step and append created walls; not yet wired to Phaser |
+| 5 | Region detection | ✅ Done (2026-11-24) | `detectRegions` in `src/geometry/regions.ts`; full rebuild per committed wall (~10 ms for 1,000 segments); islands become holes; `regionsBoundedByWall` gives the regions a new wall created |
 | 6 | Capture system | ⬜ Not started | |
 | 7 | Game logic | ⬜ Not started | |
 | 8 | Rendering, HUD and screens | ⬜ Not started | Built up alongside phases 2–7 |
@@ -36,7 +36,7 @@ Game rules are plain TypeScript with no Phaser imports, so they run and are
 tested under Node. Phaser only renders state and forwards input (REQUIREMENTS
 §7.4, §8).
 
-```
+```text
 src/
   config/      gameplay config + defaults (§4)
   geometry/    vectors, segments, polylines, polygons, region detection (§8.2)
@@ -57,7 +57,7 @@ units, `src/config/gameConfig.ts`), per D6.
 
 ## Dependencies
 
-```
+```text
 0 ─► 1 ─┬─► 2 ─────────┐
         └─► 3 ─► 4 ◄───┘
                  │
@@ -120,15 +120,14 @@ phases so each mechanic can be checked visually as soon as it exists.
   the arena are clamped; minimum-length rejection; secondary pointers ignored.
 - **Done when:** §3.3 is met, except enclosure detection (Phase 5).
 
-### Phase 4 — Drawing validation and wall creation
+### Phase 4 — Drawing validation and wall creation ✅
 
 - **Scope:** reject paths crossing an active orb; cancel when an orb touches the
   in-progress path (D2); snap endpoints to walls and arena edges (D1); detect
   closure and self-crossings; validate before committing; leave arena state
   unchanged on rejection.
 - **Depends on:** 2, 3
-- **Before starting:** resolve REQUIREMENTS §11.2 (manual cancel of a partial
-  drawing).
+- **Decision:** no manual cancel of a partial drawing (REQUIREMENTS D8).
 - **Unit tests:** path through an orb → rejected; orb moving into the
   in-progress path → canceled; endpoint snapping to walls and edges; closed-loop
   detection; state unchanged after rejection.
@@ -136,7 +135,7 @@ phases so each mechanic can be checked visually as soon as it exists.
   and world state is restored.
 - **Done when:** §3.4 and §3.7 are met.
 
-### Phase 5 — Region detection
+### Phase 5 — Region detection ✅
 
 - **Scope:** build a graph of all wall segments and arena edges, split at
   intersections, extract enclosed regions (faces); compute each region's area,

@@ -43,9 +43,42 @@ This document records project-level technical decisions only.
     checked against `minDrawingLength`. A tap with no movement is always too
     short.
   - `cancel()` exists for browser-initiated cancels (e.g. `pointercancel`).
-    Whether it counts as a failed attempt is decided in Phase 7. Manual
-    cancellation by the player is still an open decision (REQUIREMENTS §11.2).
+    Whether it counts as a failed attempt is decided in Phase 7. The player
+    cannot cancel a drawing manually (REQUIREMENTS D8).
   - Not yet wired to Phaser. When it is, the scene must also end the drawing on
     `pointerupoutside`, so a release outside the canvas isn't missed.
+- **Wall validation** (`src/drawing/wallBuilder.ts`, `pathAnalysis.ts`):
+  - An orb "touches" a path when its center is within its radius of any part
+    of the path, exact contact included. Only active orbs count.
+  - While drawing (D2), the whole in-progress path is checked against the orbs
+    after every pointer move and after every physics step. A touch cancels the
+    drawing at once, including a press that starts on an orb.
+  - On release, a path whose end is within 15 units of its start, with at
+    least 4 points, becomes a closed loop (the end is moved onto the start).
+    Otherwise each endpoint within 15 units of an existing wall or arena edge
+    is snapped onto the nearest one.
+  - The final path is checked again after snapping, against the minimum
+    length and against orbs: snapping can move an end through an orb.
+  - Open walls whose ends touch nothing are valid. They block orbs but enclose
+    nothing.
+  - Self-crossings are recorded on the wall for region detection (Phase 5).
+  - The builder only reports outcomes. The caller adds a created wall to its
+    list, so a rejected or canceled drawing leaves the arena unchanged.
+- **Region detection** (`src/geometry/planarGraph.ts`, `regions.ts`):
+  - Rebuilt from scratch after each committed wall. All wall segments and
+    the four arena edges are split at every crossing or touch, and points
+    within 1e-6 units are merged into one vertex. Loose chains are pruned, and
+    the faces of the resulting planar graph become the regions.
+  - Every point of the arena not on a wall belongs to exactly one region, so
+    region areas always add up to the arena area.
+  - A closed group of walls floating inside a region (an island) is a hole in
+    that region. Its area is subtracted, and its inside forms separate
+    regions.
+  - An orb belongs to a region when its center is strictly inside the
+    region's outline and outside its holes.
+  - `regionsBoundedByWall(regions, wallId)` returns the regions a new wall
+    created or reshaped. Phase 6 applies the capture rules to these.
+  - Performance: pairs of segments are compared after a bounding-box check.
+    About 1,000 segments take roughly 10 ms, run once per committed wall.
 - **Logical coordinates:** game state uses the fixed `ARENA` coordinate space in
   `src/config/gameConfig.ts` (1000 × 625 units), implementing D6.
