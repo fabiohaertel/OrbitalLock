@@ -4,8 +4,9 @@ A 2D arcade puzzle game for the browser, inspired by classic territory-capture
 games. Capture the moving orbs by drawing walls with your mouse or finger, and
 trap every orb inside a region small enough to lock it in place.
 
-> **Status: early development.** The project scaffolding and the core geometry
-> library are done, but the game isn't playable yet. Opening it in a browser
+> **Status: early development.** The project scaffolding, the core geometry
+> library, the orb physics and drawing input processing are done, but the game
+> isn't playable yet. Opening it in a browser
 > currently shows only a title screen. See [Roadmap](#roadmap) for progress.
 
 ## How to play
@@ -57,12 +58,12 @@ npm install
 npm run dev
 ```
 
-Then open the URL that Vite prints (by default http://localhost:5173).
+Then open the URL that Vite prints (by default <http://localhost:5173>).
 
 ### Scripts
 
 | Command | What it does |
-|---|---|
+| --- | --- |
 | `npm run dev` | Start the development server |
 | `npm run build` | Type-check and build for production into `dist/` |
 | `npm run preview` | Serve the production build locally |
@@ -77,10 +78,13 @@ launcher that works around a Windows path issue (see
 
 ## Project structure
 
-```
+```text
 src/
   config/     gameplay configuration and defaults
   geometry/   vectors, segments, polylines, polygons
+  physics/    orbs, fixed-timestep simulation, collisions
+  drawing/    drawing input: sampling, clamping, simplification, minimum length
+  layout/     screen-to-arena coordinate mapping
   scenes/     Phaser scenes
   main.ts     game entry point
 tests/        unit tests, mirroring src/
@@ -98,8 +102,8 @@ Development follows the phases in [docs/ROADMAP.md](docs/ROADMAP.md):
 
 - [x] Phase 0 — Project setup and design decisions
 - [x] Phase 1 — Geometry primitives
-- [ ] Phase 2 — Physics
-- [ ] Phase 3 — Drawing input
+- [x] Phase 2 — Physics
+- [x] Phase 3 — Drawing input
 - [ ] Phase 4 — Drawing validation and walls
 - [ ] Phase 5 — Region detection
 - [ ] Phase 6 — Capture rules

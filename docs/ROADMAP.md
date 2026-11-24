@@ -20,8 +20,8 @@ with them, follow the requirements. Design decisions D1–D7 are in
 |---|---|---|---|
 | 0 | Decisions and scaffolding | ✅ Done (2026-11-24) | Vitest runs via `scripts/vitest.mjs` (see [DECISIONS.md](DECISIONS.md)) |
 | 1 | Geometry primitives | ✅ Done (2026-11-24) | `src/geometry/`; default distance tolerance `DEFAULT_EPSILON` = 1e-6; RDP simplification is O(n²) worst case (fine for freehand path sizes) |
-| 2 | Physics | ⬜ Not started | |
-| 3 | Drawing input and path processing | ⬜ Not started | |
+| 2 | Physics | ✅ Done (2026-11-24) | `src/physics/`; constant-speed model (see [DECISIONS.md](DECISIONS.md)); walls passed as `Segment[]`; logic only, no rendering yet; orb–orb pairs checked O(n²) |
+| 3 | Drawing input and path processing | ✅ Done (2026-11-24) | `src/drawing/`, `src/layout/arenaTransform.ts`; pure logic, not yet wired to Phaser input (must handle `pointerupoutside` when wired); drawings start only inside the arena |
 | 4 | Drawing validation and wall creation | ⬜ Not started | Needs answer to the open decision in §11.2 (manual cancel) |
 | 5 | Region detection | ⬜ Not started | |
 | 6 | Capture system | ⬜ Not started | |
@@ -94,7 +94,7 @@ phases so each mechanic can be checked visually as soon as it exists.
 - **Done when:** all primitives are pure, deterministic and covered by edge-case
   tests.
 
-### Phase 2 — Physics
+### Phase 2 — Physics ✅
 
 - **Scope:** orb model (position, velocity, radius, movement state, capture
   state); fixed-timestep loop with accumulator and a cap on large frame gaps;
@@ -110,7 +110,7 @@ phases so each mechanic can be checked visually as soon as it exists.
   arena with no overlap beyond tolerance.
 - **Done when:** §3.1, §3.2 and §7.1 physics requirements are met.
 
-### Phase 3 — Drawing input and path processing
+### Phase 3 — Drawing input and path processing ✅
 
 - **Scope:** convert pointer input into a path in logical coordinates; sample
   and simplify; clamp to the arena; enforce minimum length; primary pointer only;
