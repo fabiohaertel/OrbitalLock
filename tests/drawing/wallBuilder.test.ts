@@ -27,8 +27,7 @@ function draw(
 ): WallBuildOutcome | undefined {
   const [first, ...rest] = corners;
   if (first === undefined) throw new Error('need at least one point');
-  const started = builder.begin(at(first[0], first[1]), orbs);
-  if (started !== undefined) return started;
+  builder.begin(at(first[0], first[1]));
 
   let previous = first;
   for (const corner of rest) {
@@ -143,21 +142,38 @@ describe('WallBuilder — drawing safety (REQUIREMENTS §3.7)', () => {
     expect(outcome).toEqual({ kind: 'canceled', reason: 'orbContact', orbId: orb.id });
   });
 
-  it('cancels a drawing that starts on an active orb', () => {
+  it('ignores a click or tap on an active orb: no drawing, no outcome', () => {
     const orb = makeOrb(300, 300, 0, 0, 12);
     const builder = new WallBuilder(ARENA, options);
-    expect(builder.begin(at(305, 300), [orb])).toEqual({
-      kind: 'canceled',
-      reason: 'orbContact',
-      orbId: orb.id,
-    });
+    builder.begin(at(305, 300));
+    expect(builder.checkOrbContact([orb])).toBeUndefined();
+    expect(builder.end(at(305, 300), [orb], [])).toBeUndefined();
     expect(builder.isDrawing).toBe(false);
+  });
+
+  it('cancels a drawing dragged away from a press on an active orb', () => {
+    const orb = makeOrb(300, 300, 0, 0, 12);
+    const builder = new WallBuilder(ARENA, options);
+    builder.begin(at(305, 300));
+    expect(builder.move(at(305, 340), [orb])).toEqual({ kind: 'canceled', reason: 'orbContact', orbId: orb.id });
+    expect(builder.isDrawing).toBe(false);
+  });
+
+  it('does not cancel a press that has not started drawing when an orb passes over it', () => {
+    const orb = makeOrb(100, 100, 0, 0, 12);
+    const builder = new WallBuilder(ARENA, options);
+    builder.begin(at(100, 100));
+    expect(builder.checkOrbContact([orb])).toBeUndefined();
+    // The orb moves away, then the player drags: the path starts at the press point.
+    orb.position = { x: 400, y: 400 };
+    builder.move(at(300, 100), [orb]);
+    expect(builder.end(at(300, 100), [orb], [])?.kind).toBe('wallCreated');
   });
 
   it('cancels when an orb moves into the in-progress path', () => {
     const orb = makeOrb(300, 340, 0, -100, 12);
     const builder = new WallBuilder(ARENA, options);
-    builder.begin(at(100, 300), [orb]);
+    builder.begin(at(100, 300));
     builder.move(at(500, 300), [orb]);
     expect(builder.checkOrbContact([orb])).toBeUndefined();
 
@@ -188,9 +204,17 @@ describe('WallBuilder — drawing safety (REQUIREMENTS §3.7)', () => {
     });
   });
 
+  it('discards a press canceled by the browser before it started drawing, without an outcome', () => {
+    const builder = new WallBuilder(ARENA, options);
+    builder.begin(at(100, 100));
+    builder.move(at(103, 100), []);
+    expect(builder.cancelInput()).toBeUndefined();
+    expect(builder.end(at(300, 100), [], [])).toBeUndefined();
+  });
+
   it('reports a browser input cancel and discards the drawing', () => {
     const builder = new WallBuilder(ARENA, options);
-    builder.begin(at(100, 100), []);
+    builder.begin(at(100, 100));
     builder.move(at(300, 100), []);
     expect(builder.cancelInput()).toEqual({ kind: 'canceled', reason: 'inputCanceled' });
     expect(builder.isDrawing).toBe(false);
@@ -199,7 +223,7 @@ describe('WallBuilder — drawing safety (REQUIREMENTS §3.7)', () => {
 
   it('ignores a release from a secondary pointer', () => {
     const builder = new WallBuilder(ARENA, options);
-    builder.begin(at(100, 100, 1), []);
+    builder.begin(at(100, 100, 1));
     builder.move(at(300, 100, 1), []);
     expect(builder.end(at(300, 100, 2), [], [])).toBeUndefined();
     expect(builder.isDrawing).toBe(true);

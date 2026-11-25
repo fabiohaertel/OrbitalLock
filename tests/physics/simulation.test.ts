@@ -272,3 +272,64 @@ describe('captured and stopped orbs', () => {
     expect(captured.position).toEqual({ x: 100, y: 50 });
   });
 });
+
+describe('collision reporting (REQUIREMENTS §5.5)', () => {
+  it('reports a boundary bounce only when the orb was moving into the edge', () => {
+    expect(resolveArenaBounds(makeOrb(5, 50, -10, 0), arena)).toBe(true);
+    expect(resolveArenaBounds(makeOrb(195, 50, 10, 0), arena)).toBe(true);
+    expect(resolveArenaBounds(makeOrb(100, 98, 0, 10), arena)).toBe(true);
+    // Overlapping the edge but already moving away: pushed back in, no bounce.
+    expect(resolveArenaBounds(makeOrb(5, 50, 10, 0), arena)).toBe(false);
+    // Not touching any edge.
+    expect(resolveArenaBounds(makeOrb(100, 50, 10, 10), arena)).toBe(false);
+  });
+
+  it('reports a corner hit as a single bounce', () => {
+    expect(resolveArenaBounds(makeOrb(2, 1, -10, -5), arena)).toBe(true);
+  });
+
+  it('reports a wall bounce only when the orb was moving into the wall', () => {
+    const w = wall(100, 0, 100, 100);
+    expect(resolveWallCollision(makeOrb(95, 50, 10, 0), w)).toBe(true);
+    expect(resolveWallCollision(makeOrb(95, 50, -10, 0), w)).toBe(false);
+    expect(resolveWallCollision(makeOrb(50, 50, 10, 0), w)).toBe(false);
+  });
+
+  it('reports orb pairs that bounce, but not pairs already separating', () => {
+    const a = makeOrb(50, 50, 10, 0);
+    const b = makeOrb(65, 50, -10, 0);
+    expect(resolveOrbCollisions([a, b])).toEqual([{ kind: 'orb', orbIds: [a.id, b.id] }]);
+
+    const c = makeOrb(50, 50, -10, 0);
+    const d = makeOrb(65, 50, 10, 0);
+    expect(resolveOrbCollisions([c, d])).toEqual([]);
+  });
+
+  it('returns the bounces of a step, with the orb ids', () => {
+    const toEdge = makeOrb(15, 50, -100, 0);
+    const toWall = makeOrb(80, 30, 200, 0);
+    const free = makeOrb(150, 50, 0, 10);
+    const collisions = stepPhysics([toEdge, toWall, free], { arena, walls: [wall(100, 0, 100, 60)] }, 0.1);
+    expect(collisions).toEqual(
+      expect.arrayContaining([
+        { kind: 'boundary', orbId: toEdge.id },
+        { kind: 'wall', orbId: toWall.id },
+      ]),
+    );
+    expect(collisions).toHaveLength(2);
+  });
+
+  it('reports nothing for orbs moving freely, or for captured orbs', () => {
+    const captured = makeOrb(5, 50, -10, 0, 10, { capture: 'captured' });
+    expect(stepPhysics([makeOrb(100, 50, 10, 0), captured], open, 0.1)).toEqual([]);
+    expect(stepPhysics([makeOrb(5, 50, -10, 0)], open, 0)).toEqual([]);
+  });
+
+  it('does not report an orb resting against a wall again and again', () => {
+    // Bounces once, then moves away: one collision over a whole second.
+    const orb = makeOrb(80, 50, 50, 0);
+    let count = 0;
+    for (let i = 0; i < 60; i++) count += stepPhysics([orb], { arena: { width: 1000, height: 100 }, walls: [wall(100, 0, 100, 100)] }, 1 / 60).length;
+    expect(count).toBe(1);
+  });
+});

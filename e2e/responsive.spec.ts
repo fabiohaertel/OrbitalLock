@@ -167,9 +167,14 @@ test.describe('mobile (Pixel 7, touch)', () => {
     );
     expect(touchAction).toBe('none');
 
-    // A tap in the arena is a failed drawing; with no misses allowed it ends the game…
+    // A tap in the arena starts no drawing, so it is not a miss (REQUIREMENTS §3.3)…
     const tap = await arenaToPage(page, 30, 30);
     await page.touchscreen.tap(tap.x, tap.y);
+    expect(await page.evaluate(() => window.__orbitalLock?.world.progress.failedAttempts)).toBe(0);
+    expect(await page.evaluate(() => window.__orbitalLock?.world.status)).toBe('playing');
+
+    // …but a too-short touch stroke is; with no misses allowed it ends the game…
+    await touchDrag(page, [tap, await arenaToPage(page, 40, 30), await arenaToPage(page, 50, 30)]);
     await expect.poll(() => page.evaluate(() => window.__orbitalLock?.world.status)).toBe('defeat');
 
     // …and the HUD restart button works with touch.

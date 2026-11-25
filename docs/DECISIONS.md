@@ -36,12 +36,17 @@ This document records project-level technical decisions only.
     pressed inside the arena. A press outside the arena (e.g. on the HUD) does
     not start one. After that, points outside the arena are clamped onto its
     border.
+  - A press becomes a drawing only once the pointer is 8 units
+    (`DEFAULT_START_DISTANCE`) from the press point. The path then starts at
+    the press point. A press released or canceled before that is a click or
+    tap: `end()` returns `notStarted`, and it is not a failed attempt
+    (REQUIREMENTS §3.3, D3).
   - Only the pointer that started the drawing is followed; other pointers,
     such as a second finger, are ignored.
   - Samples closer than 2 units to the previous one are dropped to filter
     jitter. On release, the path is simplified with a 1-unit tolerance, then
-    checked against `minDrawingLength`. A tap with no movement is always too
-    short.
+    checked against `minDrawingLength`. A started drawing shorter than that is
+    rejected as too short.
   - `cancel()` exists for browser-initiated cancels (e.g. `pointercancel`).
     Whether it counts as a failed attempt is decided in Phase 7. The player
     cannot cancel a drawing manually (REQUIREMENTS D8).
@@ -52,7 +57,9 @@ This document records project-level technical decisions only.
     of the path, exact contact included. Only active orbs count.
   - While drawing (D2), the whole in-progress path is checked against the orbs
     after every pointer move and after every physics step. A touch cancels the
-    drawing at once, including a press that starts on an orb.
+    drawing at once. A press on an orb is not checked until it starts drawing.
+    Because the path starts at the press point, dragging away from an orb that
+    was pressed on still cancels the drawing.
   - On release, a path whose end is within 15 units of its start, with at
     least 4 points, becomes a closed loop (the end is moved onto the start).
     Otherwise each endpoint within 15 units of an existing wall or arena edge

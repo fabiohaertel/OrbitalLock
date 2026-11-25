@@ -19,6 +19,12 @@ export interface DrawingOptions {
   /** Minimum distance between recorded samples, in arena units. Filters pointer jitter. */
   readonly sampleSpacing: number;
   /**
+   * How far the pointer must move from where it was pressed before the press
+   * becomes a drawing, in arena units (REQUIREMENTS §3.3). A press released
+   * before that (a click or tap) is not a drawing attempt.
+   */
+  readonly startDistance: number;
+  /**
    * Simplification tolerance applied when the drawing finishes, in arena units.
    * Must stay well below the orb radius so the simplified wall follows the stroke.
    */
@@ -27,6 +33,8 @@ export interface DrawingOptions {
 
 /** Default sampling and simplification values, in arena units. */
 export const DEFAULT_SAMPLE_SPACING = 2;
+/** Above the jitter of a click or tap, and well below the minimum drawing length. */
+export const DEFAULT_START_DISTANCE = 8;
 export const DEFAULT_SIMPLIFY_TOLERANCE = 1;
 
 /** Drawing options from the gameplay config, with default sampling and simplification. */
@@ -34,6 +42,7 @@ export function createDrawingOptions(config: Pick<GameplayConfig, 'minDrawingLen
   return {
     minLength: config.minDrawingLength,
     sampleSpacing: DEFAULT_SAMPLE_SPACING,
+    startDistance: DEFAULT_START_DISTANCE,
     simplifyTolerance: DEFAULT_SIMPLIFY_TOLERANCE,
   };
 }
@@ -42,13 +51,18 @@ export type DrawingResult =
   /** The path is long enough to be validated as a wall (validation happens in a later step). */
   | { readonly kind: 'completed'; readonly path: readonly Vec2[]; readonly length: number }
   /** The path is shorter than the configured minimum length. */
-  | { readonly kind: 'tooShort'; readonly path: readonly Vec2[]; readonly length: number };
+  | { readonly kind: 'tooShort'; readonly path: readonly Vec2[]; readonly length: number }
+  /** Released before the pointer moved far enough to start drawing: not a drawing attempt. */
+  | { readonly kind: 'notStarted' };
 
 /**
  * Tracks a single drawing attempt from press to release (REQUIREMENTS §3.3).
  *
- * - Only primary input (left mouse button or a touch) starts a drawing, and
- *   only when it starts inside the arena.
+ * - Only a primary press (left mouse button or a touch) inside the arena can
+ *   start a drawing. The drawing starts once the pointer has moved
+ *   `startDistance` away from the press point, and its path begins at the
+ *   press point. Until then nothing is drawn, and a release or a browser
+ *   cancel ends the press without a drawing attempt.
  * - While drawing, only the pointer that started it is followed; other
  *   pointers (e.g. a second finger) are ignored.
  * - Every point is clamped to the arena, so the path never leaves it.
@@ -60,7 +74,10 @@ export type DrawingResult =
 export class DrawingSession {
   private readonly bounds: Rect;
   private readonly options: DrawingOptions;
+  /** The pointer currently pressed, whether or not its drawing has started. */
   private activePointerId: number | undefined;
+  private pressPoint: Vec2 | undefined;
+  /** Recorded path; empty until the drawing starts. */
   private samples: Vec2[] = [];
   /** Latest clamped pointer position, which may be closer than `sampleSpacing` to the last sample. */
   private tip: Vec2 | undefined;
@@ -72,6 +89,9 @@ export class DrawingSession {
     if (!(options.sampleSpacing >= 0)) {
       throw new RangeError('sampleSpacing must be a number >= 0');
     }
+    if (!(options.startDistance >= 0)) {
+      throw new RangeError('startDistance must be a number >= 0');
+    }
     if (!(options.simplifyTolerance >= 0)) {
       throw new RangeError('simplifyTolerance must be a number >= 0');
     }
@@ -79,7 +99,13 @@ export class DrawingSession {
     this.options = options;
   }
 
+  /** True from the moment a press becomes a drawing until the drawing ends. */
   get isDrawing(): boolean {
+    return this.samples.length > 0;
+  }
+
+  /** True while a pointer is pressed, whether or not it has started drawing. */
+  get isPressed(): boolean {
     return this.activePointerId !== undefined;
   }
 
@@ -96,14 +122,16 @@ export class DrawingSession {
     return [...this.samples, this.tip];
   }
 
-  /** Starts a drawing. Returns false (and ignores the input) if it cannot start. */
+  /**
+   * Records a press that may become a drawing. Returns false (and ignores the
+   * input) if it cannot start one.
+   */
   begin(input: PointerInput): boolean {
-    if (this.isDrawing || !input.isPrimary || !this.isInsideArena(input.position)) {
+    if (this.isPressed || !input.isPrimary || !this.isInsideArena(input.position)) {
       return false;
     }
     this.activePointerId = input.pointerId;
-    this.samples = [input.position];
-    this.tip = input.position;
+    this.pressPoint = input.position;
     return true;
   }
 
@@ -113,6 +141,12 @@ export class DrawingSession {
       return;
     }
     const point = clampPointToRect(input.position, this.bounds);
+    if (!this.isDrawing) {
+      if (this.pressPoint === undefined || !this.leavesStartArea(this.pressPoint, point)) {
+        return;
+      }
+      this.samples = [this.pressPoint];
+    }
     const last = this.samples.at(-1);
     const spacing = this.options.sampleSpacing;
     if (last === undefined || distanceSquared(last, point) >= spacing * spacing) {
@@ -122,14 +156,19 @@ export class DrawingSession {
   }
 
   /**
-   * Finishes the drawing when the active pointer is released, including the
-   * release position. Returns undefined for any other pointer.
+   * Finishes the press when the active pointer is released, including the
+   * release position. Returns `notStarted` if it never became a drawing, and
+   * undefined for any other pointer.
    */
   end(input: PointerInput): DrawingResult | undefined {
     if (input.pointerId !== this.activePointerId) {
       return undefined;
     }
     this.move(input);
+    if (!this.isDrawing) {
+      this.clear();
+      return { kind: 'notStarted' };
+    }
 
     const path = simplifyPolyline(this.previewPath, this.options.simplifyTolerance);
     const length = polylineLength(path);
@@ -142,8 +181,8 @@ export class DrawingSession {
   }
 
   /**
-   * Discards the drawing in progress, e.g. when the browser cancels the touch.
-   * Returns true if a drawing was discarded.
+   * Discards the press and any drawing in progress, e.g. when the browser
+   * cancels the touch. Returns true only if a started drawing was discarded.
    */
   cancel(): boolean {
     const wasDrawing = this.isDrawing;
@@ -153,8 +192,16 @@ export class DrawingSession {
 
   private clear(): void {
     this.activePointerId = undefined;
+    this.pressPoint = undefined;
     this.samples = [];
     this.tip = undefined;
+  }
+
+  /** True when `point` is far enough from the press to start drawing; any real movement if the distance is 0. */
+  private leavesStartArea(press: Vec2, point: Vec2): boolean {
+    const distanceSq = distanceSquared(press, point);
+    const threshold = this.options.startDistance;
+    return distanceSq > 0 && distanceSq >= threshold * threshold;
   }
 
   private isInsideArena(point: Vec2): boolean {

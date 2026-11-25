@@ -73,19 +73,20 @@ export class WallBuilder {
   }
 
   /**
-   * Starts a drawing. Returns undefined if the input did not start one (or
-   * started it cleanly), or a cancel outcome if it started on an active orb.
+   * Records a press that may become a drawing (REQUIREMENTS §3.3). Nothing is
+   * drawn yet, so a press, even on an orb, never produces an outcome.
    */
-  begin(input: PointerInput, orbs: readonly Orb[]): WallBuildOutcome | undefined {
-    if (!this.session.begin(input)) {
-      return undefined;
-    }
-    return this.checkOrbContact(orbs);
+  begin(input: PointerInput): void {
+    this.session.begin(input);
   }
 
-  /** Extends the drawing; returns a cancel outcome if the path now touches an active orb. */
+  /**
+   * Extends the drawing, starting it once the pointer has moved far enough
+   * from the press. Returns a cancel outcome if the path now touches an
+   * active orb.
+   */
   move(input: PointerInput, orbs: readonly Orb[]): WallBuildOutcome | undefined {
-    if (!this.session.isDrawing) {
+    if (!this.session.isPressed) {
       return undefined;
     }
     this.session.move(input);
@@ -108,14 +109,15 @@ export class WallBuilder {
     return { kind: 'canceled', reason: 'orbContact', orbId: touched.id };
   }
 
-  /** Discards the drawing when the browser cancels the input (D8). */
+  /** Discards the press when the browser cancels the input (D8); an outcome only if a drawing had started. */
   cancelInput(): WallBuildOutcome | undefined {
     return this.session.cancel() ? { kind: 'canceled', reason: 'inputCanceled' } : undefined;
   }
 
   /**
    * Finishes the drawing on release and validates it against the current orbs
-   * and walls. Returns undefined for input from any other pointer.
+   * and walls. Returns undefined for input from any other pointer, and for a
+   * press released before it became a drawing (a click or tap is not an attempt).
    */
   end(
     input: PointerInput,
@@ -123,7 +125,7 @@ export class WallBuilder {
     walls: readonly Wall[],
   ): WallBuildOutcome | undefined {
     const result = this.session.end(input);
-    if (result === undefined) {
+    if (result === undefined || result.kind === 'notStarted') {
       return undefined;
     }
     if (result.kind === 'tooShort') {

@@ -28,6 +28,16 @@ export interface PhysicsEnvironment {
 const MAX_TRAVEL_PER_SUBSTEP = 0.5;
 
 /**
+ * A bounce: an orb's direction changed because it hit something
+ * (REQUIREMENTS §5.5). Overlaps resolved without a velocity change are not
+ * reported, so an orb resting against a wall stays silent.
+ */
+export type OrbCollision =
+  | { readonly kind: 'boundary'; readonly orbId: number }
+  | { readonly kind: 'wall'; readonly orbId: number }
+  | { readonly kind: 'orb'; readonly orbIds: readonly [number, number] };
+
+/**
  * Advances every physically active orb by `stepSeconds`.
  *
  * Physics model (arcade, constant speed):
@@ -41,18 +51,21 @@ const MAX_TRAVEL_PER_SUBSTEP = 0.5;
  *
  * Long steps are split into sub-steps so no orb travels more than half its
  * radius per sub-step.
+ *
+ * Returns every bounce that happened during the step, in order.
  */
 export function stepPhysics(
   orbs: readonly Orb[],
   environment: PhysicsEnvironment,
   stepSeconds: number,
-): void {
+): OrbCollision[] {
+  const collisions: OrbCollision[] = [];
   if (!(stepSeconds > 0)) {
-    return;
+    return collisions;
   }
   const active = orbs.filter(isPhysicallyActive);
   if (active.length === 0) {
-    return;
+    return collisions;
   }
 
   const substeps = countSubsteps(active, stepSeconds);
@@ -62,14 +75,15 @@ export function stepPhysics(
     for (const orb of active) {
       orb.position = add(orb.position, scale(orb.velocity, dt));
     }
-    resolveOrbCollisions(active);
+    collisions.push(...resolveOrbCollisions(active));
     for (const orb of active) {
       for (const wall of environment.walls) {
-        resolveWallCollision(orb, wall);
+        if (resolveWallCollision(orb, wall)) collisions.push({ kind: 'wall', orbId: orb.id });
       }
-      resolveArenaBounds(orb, environment.arena);
+      if (resolveArenaBounds(orb, environment.arena)) collisions.push({ kind: 'boundary', orbId: orb.id });
     }
   }
+  return collisions;
 }
 
 function countSubsteps(orbs: readonly Orb[], stepSeconds: number): number {
@@ -81,43 +95,53 @@ function countSubsteps(orbs: readonly Orb[], stepSeconds: number): number {
   return substeps;
 }
 
-/** Keeps the orb fully inside the arena, reflecting velocity off the edge it hit. */
-export function resolveArenaBounds(orb: Orb, arena: ArenaDimensions): void {
+/**
+ * Keeps the orb fully inside the arena, reflecting velocity off the edge it hit.
+ * Returns true when the orb bounced (it was moving into an edge it touches).
+ */
+export function resolveArenaBounds(orb: Orb, arena: ArenaDimensions): boolean {
   const r = orb.radius;
   let { x, y } = orb.position;
   let { x: vx, y: vy } = orb.velocity;
+  let bounced = false;
 
   if (x < r) {
     x = r;
+    bounced ||= vx < 0;
     vx = Math.abs(vx);
   } else if (x > arena.width - r) {
     x = arena.width - r;
+    bounced ||= vx > 0;
     vx = -Math.abs(vx);
   }
 
   if (y < r) {
     y = r;
+    bounced ||= vy < 0;
     vy = Math.abs(vy);
   } else if (y > arena.height - r) {
     y = arena.height - r;
+    bounced ||= vy > 0;
     vy = -Math.abs(vy);
   }
 
   orb.position = { x, y };
   orb.velocity = { x: vx, y: vy };
+  return bounced;
 }
 
 /**
  * Pushes the orb out of the wall segment if they overlap and reflects its
  * velocity if it is moving into the wall. Uses the closest point on the
  * segment, so hitting a wall end behaves like hitting a rounded corner.
+ * Returns true when the orb bounced (it was moving into the wall).
  */
-export function resolveWallCollision(orb: Orb, wall: Segment): void {
+export function resolveWallCollision(orb: Orb, wall: Segment): boolean {
   const closest = closestPointOnSegment(orb.position, wall);
   const offset = subtract(orb.position, closest);
   const distanceSq = lengthSquared(offset);
   if (distanceSq >= orb.radius * orb.radius) {
-    return;
+    return false;
   }
 
   const distance = Math.sqrt(distanceSq);
@@ -126,9 +150,11 @@ export function resolveWallCollision(orb: Orb, wall: Segment): void {
   orb.position = add(closest, scale(normal, orb.radius));
 
   const approach = dot(orb.velocity, normal);
-  if (approach < 0) {
-    orb.velocity = subtract(orb.velocity, scale(normal, 2 * approach));
+  if (approach >= 0) {
+    return false;
   }
+  orb.velocity = subtract(orb.velocity, scale(normal, 2 * approach));
+  return true;
 }
 
 /**
@@ -143,22 +169,29 @@ function fallbackWallNormal(orb: Orb, wall: Segment): Vec2 {
   return dot(perpendicular, orb.velocity) > 0 ? scale(perpendicular, -1) : perpendicular;
 }
 
-/** Separates overlapping orbs and applies elastic, speed-preserving collision response. */
-export function resolveOrbCollisions(orbs: readonly Orb[]): void {
+/**
+ * Separates overlapping orbs and applies elastic, speed-preserving collision
+ * response. Returns the pairs that bounced (were closing in on each other).
+ */
+export function resolveOrbCollisions(orbs: readonly Orb[]): OrbCollision[] {
+  const collisions: OrbCollision[] = [];
   for (let i = 0; i < orbs.length; i++) {
     const first = orbs[i] as Orb;
     for (let j = i + 1; j < orbs.length; j++) {
-      resolveOrbPair(first, orbs[j] as Orb);
+      const second = orbs[j] as Orb;
+      if (resolveOrbPair(first, second)) collisions.push({ kind: 'orb', orbIds: [first.id, second.id] });
     }
   }
+  return collisions;
 }
 
-function resolveOrbPair(first: Orb, second: Orb): void {
+/** Returns true when the pair bounced. */
+function resolveOrbPair(first: Orb, second: Orb): boolean {
   const minDistance = first.radius + second.radius;
   const offset = subtract(second.position, first.position);
   const distanceSq = lengthSquared(offset);
   if (distanceSq >= minDistance * minDistance) {
-    return;
+    return false;
   }
 
   const distance = Math.sqrt(distanceSq);
@@ -176,7 +209,7 @@ function resolveOrbPair(first: Orb, second: Orb): void {
 
   const closingSpeed = dot(subtract(second.velocity, first.velocity), normal);
   if (closingSpeed >= 0) {
-    return; // Already separating: no velocity change.
+    return false; // Already separating: no velocity change.
   }
 
   const firstSpeed = length(first.velocity);
@@ -190,6 +223,7 @@ function resolveOrbPair(first: Orb, second: Orb): void {
 
   first.velocity = withSpeed(firstVelocity, firstSpeed, scale(normal, -1));
   second.velocity = withSpeed(secondVelocity, secondSpeed, normal);
+  return true;
 }
 
 /** Rescales `velocity` to `speed`; uses `fallbackDirection` if the velocity is zero. */

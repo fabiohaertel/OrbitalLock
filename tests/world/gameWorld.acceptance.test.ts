@@ -51,6 +51,20 @@ function square(x: number, y: number, size: number): [number, number][] {
   ];
 }
 
+/** A started drawing shorter than the minimum length: rejected, so a miss (D3). */
+function missDrawing(world: GameWorld): GameEvent[] {
+  return [
+    ...world.pointerDown(input(100, 100)),
+    ...world.pointerMove(input(110, 100)),
+    ...world.pointerUp(input(120, 100)),
+  ];
+}
+
+/** Press and release in place, without moving the pointer. */
+function click(world: GameWorld, x: number, y: number): GameEvent[] {
+  return [...world.pointerDown(input(x, y)), ...world.pointerUp(input(x, y))];
+}
+
 function run(world: GameWorld, seconds: number): GameEvent[] {
   const events: GameEvent[] = [];
   for (let i = 0; i < Math.round(seconds * 60); i++) events.push(...world.update(1 / 60));
@@ -142,15 +156,38 @@ describe('§9 acceptance (headless)', () => {
 
   it('Exceed the failure limit → defeat is triggered', () => {
     const world = worldWith(() => [makeOrb(800, 500, 0, 0, 12)], { maxFailedAttempts: 2 });
-    const tap = () => [...world.pointerDown(input(100, 100)), ...world.pointerUp(input(100, 100))];
-
-    expect(tap()).toHaveLength(1);
-    expect(tap()).toHaveLength(1);
+    expect(missDrawing(world)).toHaveLength(1);
+    expect(missDrawing(world)).toHaveLength(1);
     expect(world.status).toBe('playing');
-    const events = tap();
+    const events = missDrawing(world);
     expect(events.map((e) => e.kind)).toEqual(['attemptFailed', 'gameOver']);
     expect(events.at(-1)).toEqual({ kind: 'gameOver', status: 'defeat' });
     expect(world.progress.failedAttempts).toBe(3);
+  });
+
+  it('Click or tap the arena without moving the pointer → nothing is drawn and no miss is counted', () => {
+    const world = worldWith(() => [makeOrb(300, 300, 0, 0, 12)], { maxFailedAttempts: 0 });
+    // Even with no misses allowed, clicks never end the game.
+    expect(click(world, 100, 100)).toEqual([]);
+    expect(click(world, 305, 300)).toEqual([]); // on an orb
+    // Jitter smaller than the start distance is still a click.
+    expect([
+      ...world.pointerDown(input(500, 200)),
+      ...world.pointerMove(input(503, 202)),
+      ...world.pointerUp(input(502, 197)),
+    ]).toEqual([]);
+    expect(world.status).toBe('playing');
+    expect(world.progress.failedAttempts).toBe(0);
+    expect(world.walls).toEqual([]);
+    expect(world.isDrawing).toBe(false);
+  });
+
+  it('Start drawing, then release short → the drawing is rejected as a miss', () => {
+    const world = worldWith(() => [makeOrb(800, 500, 0, 0, 12)]);
+    expect(missDrawing(world)).toEqual([
+      { kind: 'attemptFailed', attempt: { kind: 'rejected', reason: 'tooShort' } },
+    ]);
+    expect(world.progress.failedAttempts).toBe(1);
   });
 
   it('Attempt to draw outside the arena → drawing is constrained to arena boundaries', () => {
@@ -184,8 +221,7 @@ describe('§9 acceptance (headless)', () => {
 
     run(world, 1);
     draw(world, [[8, 300], [992, 300]]);
-    world.pointerDown(input(100, 100));
-    world.pointerUp(input(100, 100)); // failed attempt
+    missDrawing(world); // failed attempt
     expect(world.progress).not.toEqual(initialProgress);
 
     world.restart();
@@ -198,8 +234,7 @@ describe('§9 acceptance (headless)', () => {
 
   it('Restart after defeat → play resumes', () => {
     const world = worldWith(() => [makeOrb(800, 500, 0, 0, 12)], { maxFailedAttempts: 0 });
-    world.pointerDown(input(100, 100));
-    world.pointerUp(input(100, 100));
+    missDrawing(world);
     expect(world.status).toBe('defeat');
     world.restart();
     expect(world.status).toBe('playing');
@@ -214,6 +249,20 @@ describe('GameWorld details', () => {
     world.pointerMove(input(200, 100));
     expect(world.pointerCancel().map((e) => e.kind)).toEqual(['attemptFailed']);
     expect(world.progress.failedAttempts).toBe(1);
+  });
+
+  it('does not count a browser cancel before the drawing started (D8)', () => {
+    const world = worldWith(() => [makeOrb(800, 500, 0, 0, 12)]);
+    world.pointerDown(input(100, 100));
+    expect(world.pointerCancel()).toEqual([]);
+    expect(world.progress.failedAttempts).toBe(0);
+  });
+
+  it('does not cancel a press that has not started drawing when an orb passes over it', () => {
+    const world = worldWith(() => [makeOrb(100, 160, 0, -160, 12)]);
+    world.pointerDown(input(100, 100));
+    expect(run(world, 0.5).filter((e) => e.kind === 'attemptFailed')).toEqual([]);
+    expect(world.pointerUp(input(100, 100))).toEqual([]);
   });
 
   it('tracks elapsed time in fixed steps, independent of frame rate', () => {
@@ -237,5 +286,47 @@ describe('GameWorld details', () => {
     draw(world, [[8, 250], [992, 250]]);
     run(world, 3);
     expect(world.orbs[0]?.position.y).toBeGreaterThanOrEqual(250 + 12 - 1e-6);
+  });
+});
+
+describe('collision events (REQUIREMENTS §5.5)', () => {
+  it('reports a collision when an orb bounces off the arena boundary', () => {
+    const world = worldWith(() => [makeOrb(500, 40, 0, -160, 12)]);
+    const collisions = run(world, 0.5).filter((e) => e.kind === 'collision');
+    expect(collisions).toEqual([{ kind: 'collision', collision: { kind: 'boundary', orbId: world.orbs[0]?.id } }]);
+  });
+
+  it('reports a collision when an orb bounces off a wall', () => {
+    const world = worldWith(() => [makeOrb(500, 400, 0, -160, 12)]);
+    expect(draw(world, [[8, 300], [992, 300]])[0]?.kind).toBe('wallCreated');
+    const collisions = run(world, 1).filter((e) => e.kind === 'collision');
+    expect(collisions).toEqual([{ kind: 'collision', collision: { kind: 'wall', orbId: world.orbs[0]?.id } }]);
+  });
+
+  it('reports a collision when two orbs bounce off each other', () => {
+    const world = worldWith(() => [makeOrb(400, 300, 160, 0, 12), makeOrb(600, 300, -160, 0, 12)]);
+    const collisions = run(world, 1).filter((e) => e.kind === 'collision');
+    expect(collisions).toEqual([
+      { kind: 'collision', collision: { kind: 'orb', orbIds: [world.orbs[0]?.id, world.orbs[1]?.id] } },
+    ]);
+  });
+
+  it('reports no collisions while orbs move freely', () => {
+    const world = worldWith(() => [makeOrb(500, 300, 100, 0, 12)]);
+    expect(run(world, 1)).toEqual([]);
+  });
+
+  it('touching the in-progress drawing cancels it but is not a collision', () => {
+    const world = worldWith(() => [makeOrb(500, 450, 0, -160, 12)]);
+    world.pointerDown(input(200, 300));
+    for (let x = 210; x <= 800; x += 10) world.pointerMove(input(x, 300));
+    expect(run(world, 1.5).map((e) => e.kind)).toEqual(['attemptFailed']);
+  });
+
+  it('reports no collisions once the game is over', () => {
+    const world = worldWith(() => [makeOrb(500, 40, 0, -160, 12)], { maxFailedAttempts: 0 });
+    missDrawing(world);
+    expect(world.status).toBe('defeat');
+    expect(run(world, 1)).toEqual([]);
   });
 });

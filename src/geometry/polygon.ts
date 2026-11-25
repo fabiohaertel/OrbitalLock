@@ -68,3 +68,29 @@ export function locatePointInPolygon(
 
   return inside ? 'inside' : 'outside';
 }
+
+/**
+ * Part of the polygon between the vertical lines `x = minX` and `x = maxX`
+ * (Sutherland–Hodgman against both lines). Works for concave polygons: where
+ * the result has several pieces they are joined by zero-width edges along a
+ * clip line, which fill to nothing. Empty when nothing lies inside the band.
+ */
+export function clipPolygonToXRange(polygon: Polygon, minX: number, maxX: number): Vec2[] {
+  const left = clipAgainstVerticalLine(polygon, minX, 1);
+  return clipAgainstVerticalLine(left, maxX, -1);
+}
+
+/** Keeps the side where `side * (x - lineX) >= 0`. */
+function clipAgainstVerticalLine(polygon: Polygon, lineX: number, side: 1 | -1): Vec2[] {
+  const result: Vec2[] = [];
+  const inside = (p: Vec2) => side * (p.x - lineX) >= 0;
+  polygon.forEach((current, index) => {
+    const previous = polygon[(index + polygon.length - 1) % polygon.length] as Vec2;
+    if (inside(current) !== inside(previous)) {
+      const t = (lineX - previous.x) / (current.x - previous.x);
+      result.push({ x: lineX, y: previous.y + (current.y - previous.y) * t });
+    }
+    if (inside(current)) result.push(current);
+  });
+  return result;
+}

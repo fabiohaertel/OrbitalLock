@@ -45,7 +45,8 @@ src/
   capture/     capture rules (§8.3)
   game/        state machine, failed attempts, score, timer, victory/defeat (§8.4)
   world/       GameWorld: combines the systems; driven by integration tests
-  render/      Phaser drawing of arena, orbs, walls, preview (§8.5)
+  render/      Phaser drawing of arena, orbs, walls, preview (§5.4, §8.5)
+  audio/       collision sound and miss whistle: synthesis and playback (§5.5, §8.6)
   ui/          HUD, victory/defeat screens, restart
   layout/      viewport fitting, logical↔screen coordinate mapping
   scenes/      Phaser scenes: thin glue only

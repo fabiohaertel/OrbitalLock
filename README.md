@@ -128,7 +128,7 @@ Development follows the phases in [docs/ROADMAP.md](docs/ROADMAP.md):
 - [ ] Phase 10 — Acceptance testing and polish
 
 Planned for after the first playable version: multiple levels, high scores,
-obstacles, power-ups, special orbs, and sound.
+obstacles, power-ups, special orbs, and music.
 
 ## Documentation
 

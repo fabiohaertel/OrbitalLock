@@ -16,7 +16,7 @@ import type { Segment } from '../geometry/segment';
 import type { Vec2 } from '../geometry/vector';
 import { FixedTimestep } from '../physics/fixedTimestep';
 import type { Orb } from '../physics/orb';
-import { stepPhysics } from '../physics/simulation';
+import { stepPhysics, type OrbCollision } from '../physics/simulation';
 import { createOrbs } from '../physics/spawn';
 
 /** A drawing attempt that failed: rejected on release or canceled while drawing (D3). */
@@ -26,6 +26,8 @@ export type FailedAttempt = Extract<WallBuildOutcome, { kind: 'rejected' | 'canc
 export type GameEvent =
   | { readonly kind: 'wallCreated'; readonly wall: Wall; readonly capture: CaptureReport }
   | { readonly kind: 'attemptFailed'; readonly attempt: FailedAttempt }
+  /** An orb bounced off the arena, a wall or another orb (REQUIREMENTS §5.5). */
+  | { readonly kind: 'collision'; readonly collision: OrbCollision }
   | { readonly kind: 'gameOver'; readonly status: Exclude<GameStatus, 'playing'> };
 
 export interface GameWorldOptions {
@@ -115,16 +117,21 @@ export class GameWorld {
 
     this.timestep.advance(frameSeconds, (dt) => {
       if (this.state.status !== 'playing') return;
-      stepPhysics(this.orbList, { arena: this.arena, walls: this.segments }, dt);
+      const collisions = stepPhysics(this.orbList, { arena: this.arena, walls: this.segments }, dt);
+      for (const collision of collisions) events.push({ kind: 'collision', collision });
       this.state = advanceClock(this.state, dt);
       this.handle(this.builder.checkOrbContact(this.orbList), events);
     });
     return events;
   }
 
+  /**
+   * A press only records where the pointer went down. It produces no events:
+   * the drawing starts once the pointer moves away (REQUIREMENTS §3.3).
+   */
   pointerDown(input: PointerInput): GameEvent[] {
-    return this.whilePlaying((events) => {
-      this.handle(this.builder.begin(input, this.orbList), events);
+    return this.whilePlaying(() => {
+      this.builder.begin(input);
     });
   }
 
@@ -171,7 +178,8 @@ export class GameWorld {
     }
 
     if (this.state.status !== 'playing') {
-      if (this.builder.isDrawing) this.builder.cancelInput();
+      // Also drops a press that has not started drawing yet.
+      this.builder.cancelInput();
       events.push({ kind: 'gameOver', status: this.state.status });
     }
   }

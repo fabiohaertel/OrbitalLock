@@ -47,7 +47,8 @@ Functional requirements:
 
 ### 3.3 Drawing System
 
-- The player starts drawing by pressing and holding the primary mouse button or touching the screen.
+- The player starts drawing by pressing and holding the primary mouse button or touching the screen, then moving the pointer. The drawing starts once the pointer has moved a small distance away from where it was pressed. That distance is just large enough to ignore the jitter of a click or tap. The path begins at the press point.
+- A press that is released (a click or tap) or canceled before the drawing starts is not a drawing attempt. It draws nothing, is not rejected and is not a miss (D3). This applies anywhere in the arena, including on an orb.
 - Mouse or touch movement defines the drawing path.
 - Releasing the primary mouse button or ending the touch finishes the drawing attempt.
 - The player can draw horizontal, vertical, diagonal, and arbitrary free-form paths.
@@ -101,7 +102,7 @@ Victory:
 Defeat:
 
 - The player exceeds the configured number of failed drawing attempts or available lives.
-- Every rejected or canceled drawing counts as a failed attempt: see D3 (§11.1).
+- Every rejected or canceled drawing counts as a failed attempt. A click or tap that never started a drawing (§3.3) does not: see D3 (§11.1).
 
 The game must provide:
 
@@ -170,6 +171,60 @@ Example:
     Score: 450
 
     [Restart]
+
+### 5.4 Visual Style
+
+The arena is themed as a soccer field and the orbs as soccer balls. The theme is purely visual: it does not change any gameplay rule, size or collision shape.
+
+- The arena background must be green and resemble a soccer field: alternating light and dark green mowing stripes and faint white field markings (halfway line, center circle and spot, penalty and goal areas, penalty spots and arcs).
+- Field markings must be faint enough that they cannot be confused with permanent walls or the drawing preview.
+- Each orb must be drawn as a soccer ball: a white ball with black pentagonal patches and seams in the classic truncated-icosahedron pattern, with shading so it reads as a sphere. A generated texture may be used.
+- The ball's on-screen size must match the orb's collision radius.
+- Moving balls must roll like a real soccer ball seen from above:
+  - the patches and seams turn in the direction the ball is travelling, around the horizontal axis perpendicular to its movement;
+  - the rolling speed matches the distance travelled (rolling without slipping: the ball turns by distance ÷ radius radians), so faster balls spin faster;
+  - after a bounce the ball keeps its current orientation and rolls in its new direction;
+  - the shading and highlight stay fixed (the light does not turn with the ball), so it keeps reading as a sphere;
+  - a ball that stops moving (captured, or the game is over) keeps the orientation it had and stops rolling.
+- Moving balls must show a motion-blur trail, like a photo of a ball in flight:
+  - a soft, translucent light-gray streak behind the ball that fades out and narrows towards its end;
+  - the trail follows the path the ball actually travelled, so after a bounce it bends around the bounce point and never extends through a wall, an arena boundary or a captured region;
+  - its length is proportional to the ball's speed (the distance covered in a fixed fraction of a second), and it is drawn beneath all balls;
+  - captured or stopped balls have no trail; a ball that has just appeared (game start or restart) has none until it moves.
+- Rolling and the trail are purely visual. They are derived from the orbs' positions, never change the physics, and do not depend on the frame rate.
+- Captured orbs must remain visually distinguishable from active orbs (captured balls are drawn dimmed).
+- A captured region (D4) must look like a soccer goal net with the captured balls trapped inside it:
+  - a darker, shadowed backdrop, so captured regions stand out from the open field;
+  - a mesh of white net cords in a diamond pattern, clipped to the region's shape;
+  - the net is drawn over the captured balls, so they appear caught behind it.
+- Inside a captured region, areas that are not captured, such as uncaptured islands, have no net and keep the field's stripes.
+- The net is purely visual. Only active orbs move, and they never enter a captured region, so the net never covers an active ball.
+
+### 5.5 Sound Effects
+
+#### Collision sound
+
+- Every time an active orb collides with something, a short collision sound must be played.
+- A collision is a bounce, where an orb's movement direction changes because it hit:
+  - an arena boundary,
+  - a permanent wall, including the boundary of a captured region (D4), or
+  - another active orb.
+- An orb that touches without bouncing (for example, one already moving away from the wall it overlaps) does not make a sound. An orb touching an in-progress drawing is not a collision: that cancels the drawing (D2) and is a miss (see below).
+- The collision sound is a soft kick of a soccer ball: a short, muffled, low-pitched thump played at a low volume.
+- Collisions that happen within the same rendered frame are played as one sound, so simultaneous impacts do not stack into a loud, clipped sound.
+- Browsers block audio until the user interacts with the page. Collisions before the first interaction are silent; sounds play normally after it.
+
+#### Miss whistle
+
+- Every time a miss occurs, a referee's whistle must be played: a single short blow, as when a referee calls a foul.
+- A miss is a failed attempt as defined in D3: every rejected or canceled drawing. A click or tap that never started a drawing (§3.3) is not a miss and plays no whistle. A miss is the same event that increments the HUD's miss counter and shows the failure feedback (§3.7).
+- A valid wall whose region is too large is not a miss (D3), so it plays no whistle.
+- The miss that triggers defeat also plays the whistle.
+- A miss always follows the player's input, so the whistle plays even on the player's very first interaction.
+
+#### General
+
+- Missing audio support must not affect gameplay. If the browser has no Web Audio support, the game runs silently.
 
 ## 6. Scoring
 
@@ -270,6 +325,14 @@ Responsible for:
 - HUD and game screens.
 - Responsive layout.
 
+### 8.6 Audio
+
+Responsible for:
+
+- Collision sound and miss whistle (§5.5).
+
+The physics system reports collisions and the game logic reports misses. Neither plays sounds itself.
+
 ## 9. Acceptance Criteria
 
 The initial implementation must satisfy the following scenarios:
@@ -285,12 +348,18 @@ The initial implementation must satisfy the following scenarios:
 | Orb hits a wall during construction | Drawing is canceled |
 | Capture all orbs | Victory is triggered |
 | Exceed the failure limit | Defeat is triggered |
+| Click or tap the arena without moving the pointer | Nothing is drawn and no miss is counted |
 | Attempt to draw outside the arena | Drawing is constrained to arena boundaries |
 | Restart the game | Initial game state is restored |
 | Resize the browser window | Arena adapts to the available viewport |
 | Change mobile device orientation | Arena adapts to the new dimensions |
 | Draw using touch input | Drawing works as expected |
 | Play on a mobile viewport | HUD and arena remain usable without horizontal scrolling |
+| View the arena | Arena looks like a green soccer field; orbs look like soccer balls |
+| Watch a moving ball | It rolls in its direction of travel and leaves a fading motion-blur trail |
+| An orb bounces off an arena boundary, a wall or another orb | A soft kick sound plays |
+| Capture an orb | The captured region looks like a goal net with the ball trapped behind it |
+| A drawing is rejected or canceled (a miss) | A single referee whistle blow plays |
 
 ## 10. Future Features
 
@@ -305,7 +374,7 @@ The following features are outside the initial MVP scope:
 - Power-ups.
 - Different wall types.
 - Advanced visual effects.
-- Sound effects and music.
+- Music and sound effects other than those in §5.5.
 
 These features may be introduced after the core gameplay mechanics are implemented and validated.
 
@@ -329,7 +398,8 @@ Resolves: whether a drawing must be a closed loop or can connect two existing wa
 
 Clarifies §3.7: "If an active orb collides with a wall while it is being constructed".
 
-- A wall is under construction while the player is drawing it, from pointer or touch down to release.
+- A wall is under construction while the player is drawing it: from the moment the drawing starts (the pointer has moved away from the press point, §3.3) until release.
+- Before the drawing starts there is no path, so nothing can touch it.
 - During construction, the in-progress path does not block orbs.
 - Any active orb touching the in-progress path cancels the drawing attempt.
 - On release, the drawing is validated and, if valid, committed instantly as a permanent wall.
@@ -340,6 +410,8 @@ Clarifies §3.7: "If an active orb collides with a wall while it is being constr
 Resolves: whether invalid drawings consume lives.
 
 - Every rejected or canceled drawing counts as one failed attempt.
+- A press released or canceled before its drawing started (a click or tap, §3.3) is not a drawing and does not count.
+- Once a drawing has started, it counts as usual, including when it is released shorter than the minimum drawing length.
 - Defeat is triggered when the number of failed attempts exceeds the configured `maxFailedAttempts` (§3.8).
 - A valid wall whose enclosed region exceeds the maximum capture area is not a failed attempt: the wall stays and no capture occurs.
 
@@ -380,6 +452,7 @@ Resolves: whether a wall can be partially drawn and then canceled manually.
 
 - The player cannot cancel a drawing in progress.
 - A drawing ends only when it is released (and then validated) or when the game cancels it: an active orb touches it (D2), or the browser cancels the input.
+- A browser cancel before the drawing has started (§3.3) discards the press and is not a failed attempt.
 
 #### D9 — Placeholder scoring
 

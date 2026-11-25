@@ -17,7 +17,7 @@ function input(x: number, y: number): PointerInput {
 function drawLoop(builder: WallBuilder, orbs: readonly Orb[], walls: readonly Wall[], corners: [number, number][]): Wall {
   const [first, ...rest] = corners;
   if (first === undefined) throw new Error('need corners');
-  builder.begin(input(...first), orbs);
+  builder.begin(input(...first));
   let previous = first;
   for (const corner of [...rest, first]) {
     for (let i = 1; i <= 10; i++) {

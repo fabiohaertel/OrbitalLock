@@ -12,7 +12,7 @@ function buildWall(builder: WallBuilder, walls: readonly Wall[], points: [number
   const input = (x: number, y: number) => ({ pointerId: 1, position: { x, y }, isPrimary: true });
   const [first, ...rest] = points;
   if (first === undefined) throw new Error('need points');
-  builder.begin(input(...first), []);
+  builder.begin(input(...first));
   let previous = first;
   for (const point of rest) {
     for (let i = 1; i <= 10; i++) {

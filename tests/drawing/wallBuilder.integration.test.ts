@@ -32,7 +32,7 @@ class Harness {
   }
 
   press(x: number, y: number): void {
-    this.record(this.builder.begin(input(x, y), this.orbs));
+    this.builder.begin(input(x, y));
   }
 
   drag(x: number, y: number): void {

@@ -3,6 +3,7 @@ import { ARENA, DEFAULT_GAMEPLAY_CONFIG } from '../../src/config/gameConfig';
 import {
   DEFAULT_SAMPLE_SPACING,
   DEFAULT_SIMPLIFY_TOLERANCE,
+  DEFAULT_START_DISTANCE,
   DrawingSession,
   createDrawingOptions,
   type DrawingOptions,
@@ -11,7 +12,7 @@ import {
 } from '../../src/drawing/drawingSession';
 import { screenToArena } from '../../src/layout/arenaTransform';
 
-const options: DrawingOptions = { minLength: 40, sampleSpacing: 2, simplifyTolerance: 1 };
+const options: DrawingOptions = { minLength: 40, sampleSpacing: 2, startDistance: 8, simplifyTolerance: 1 };
 
 function at(x: number, y: number, pointerId = 1, isPrimary = true): PointerInput {
   return { pointerId, position: { x, y }, isPrimary };
@@ -39,8 +40,14 @@ describe('createDrawingOptions', () => {
     expect(createDrawingOptions(DEFAULT_GAMEPLAY_CONFIG)).toEqual({
       minLength: DEFAULT_GAMEPLAY_CONFIG.minDrawingLength,
       sampleSpacing: DEFAULT_SAMPLE_SPACING,
+      startDistance: DEFAULT_START_DISTANCE,
       simplifyTolerance: DEFAULT_SIMPLIFY_TOLERANCE,
     });
+  });
+
+  it('keeps the start distance above the sample spacing and well below the minimum drawing length', () => {
+    expect(DEFAULT_START_DISTANCE).toBeGreaterThanOrEqual(DEFAULT_SAMPLE_SPACING);
+    expect(DEFAULT_START_DISTANCE).toBeLessThan(DEFAULT_GAMEPLAY_CONFIG.minDrawingLength / 2);
   });
 
   it('keeps the simplification tolerance well below the default orb radius', () => {
@@ -49,12 +56,43 @@ describe('createDrawingOptions', () => {
 });
 
 describe('DrawingSession — starting', () => {
-  it('starts with primary input inside the arena', () => {
+  it('accepts a primary press inside the arena, but draws nothing until the pointer moves', () => {
     const session = new DrawingSession(ARENA, options);
     expect(session.isDrawing).toBe(false);
     expect(session.begin(at(100, 100))).toBe(true);
+    expect(session.isPressed).toBe(true);
+    expect(session.isDrawing).toBe(false);
+    expect(session.previewPath).toEqual([]);
+  });
+
+  it('starts drawing once the pointer is the start distance from the press point, from the press point', () => {
+    const session = new DrawingSession(ARENA, options);
+    session.begin(at(100, 100));
+    session.move(at(104, 103)); // 5 units away: still a press
+    expect(session.isDrawing).toBe(false);
+    expect(session.previewPath).toEqual([]);
+    session.move(at(100, 108)); // exactly 8 units away
     expect(session.isDrawing).toBe(true);
-    expect(session.previewPath).toEqual([{ x: 100, y: 100 }]);
+    expect(session.previewPath).toEqual([
+      { x: 100, y: 100 },
+      { x: 100, y: 108 },
+    ]);
+  });
+
+  it('keeps drawing once started, even if the pointer comes back near the press point', () => {
+    const session = new DrawingSession(ARENA, options);
+    session.begin(at(100, 100));
+    session.move(at(130, 100));
+    session.move(at(101, 100));
+    expect(session.isDrawing).toBe(true);
+    expect(session.previewPath.at(-1)).toEqual({ x: 101, y: 100 });
+  });
+
+  it('measures the start distance after clamping to the arena', () => {
+    const session = new DrawingSession(ARENA, options);
+    session.begin(at(2, 100));
+    session.move(at(-50, 100)); // clamped to x = 0: only 2 units from the press
+    expect(session.isDrawing).toBe(false);
   });
 
   it('starts on the arena border', () => {
@@ -79,6 +117,7 @@ describe('DrawingSession — starting', () => {
     const session = new DrawingSession(ARENA, options);
     session.begin(at(100, 100, 1));
     expect(session.begin(at(300, 300, 2))).toBe(false);
+    session.move(at(150, 100, 1));
     expect(session.previewPath[0]).toEqual({ x: 100, y: 100 });
   });
 });
@@ -198,7 +237,7 @@ describe('DrawingSession — finishing', () => {
     const session = new DrawingSession(ARENA, options);
     const result = stroke(session, [100, 100], [130, 100]);
     expect(result?.kind).toBe('tooShort');
-    expect(result?.length).toBeCloseTo(30, 9);
+    expect(result?.kind === 'tooShort' ? result.length : Number.NaN).toBeCloseTo(30, 9);
     expect(session.isDrawing).toBe(false);
   });
 
@@ -215,15 +254,38 @@ describe('DrawingSession — finishing', () => {
     expect(result?.kind).toBe('completed');
   });
 
-  it('treats a tap (no movement) as too short, even with a zero minimum', () => {
-    const session = new DrawingSession(ARENA, { ...options, minLength: 0 });
+  it('reports a click or tap (no movement) as not started, and ends the press', () => {
+    const session = new DrawingSession(ARENA, options);
     session.begin(at(100, 100));
-    expect(session.end(at(100, 100))?.kind).toBe('tooShort');
+    expect(session.end(at(100, 100))).toEqual({ kind: 'notStarted' });
+    expect(session.isPressed).toBe(false);
+    expect(session.begin(at(200, 200))).toBe(true);
+  });
+
+  it('reports a press with jitter below the start distance as not started', () => {
+    const session = new DrawingSession(ARENA, options);
+    session.begin(at(100, 100));
+    session.move(at(103, 98));
+    session.move(at(97, 104));
+    expect(session.end(at(105, 100))).toEqual({ kind: 'notStarted' });
+  });
+
+  it('treats a tap as not started, even with zero start distance and minimum length', () => {
+    const session = new DrawingSession(ARENA, { ...options, minLength: 0, startDistance: 0 });
+    session.begin(at(100, 100));
+    expect(session.end(at(100, 100))).toEqual({ kind: 'notStarted' });
+  });
+
+  it('rejects a started drawing that is still shorter than the minimum length', () => {
+    const session = new DrawingSession(ARENA, options);
+    session.begin(at(100, 100));
+    expect(session.end(at(115, 100))?.kind).toBe('tooShort');
   });
 
   it('ignores release of a secondary pointer', () => {
     const session = new DrawingSession(ARENA, options);
     session.begin(at(100, 100, 1));
+    session.move(at(200, 100, 1));
     expect(session.end(at(400, 100, 2))).toBeUndefined();
     expect(session.isDrawing).toBe(true);
   });
@@ -249,6 +311,14 @@ describe('DrawingSession — cancel', () => {
   it('returns false when nothing was being drawn', () => {
     expect(new DrawingSession(ARENA, options).cancel()).toBe(false);
   });
+
+  it('discards a press that has not started drawing, returning false', () => {
+    const session = new DrawingSession(ARENA, options);
+    session.begin(at(100, 100));
+    expect(session.cancel()).toBe(false);
+    expect(session.isPressed).toBe(false);
+    expect(session.end(at(300, 100))).toBeUndefined();
+  });
 });
 
 describe('DrawingSession — options', () => {
@@ -257,6 +327,7 @@ describe('DrawingSession — options', () => {
       { ...options, minLength: -1 },
       { ...options, sampleSpacing: Number.NaN },
       { ...options, simplifyTolerance: -0.1 },
+      { ...options, startDistance: -1 },
     ]) {
       expect(() => new DrawingSession(ARENA, bad)).toThrow(RangeError);
     }

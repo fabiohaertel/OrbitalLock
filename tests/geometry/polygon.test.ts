@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  clipPolygonToXRange,
   locatePointInPolygon,
   polygonArea,
   signedPolygonArea,
@@ -104,5 +105,39 @@ describe('locatePointInPolygon', () => {
   it('treats polygons with fewer than 3 vertices as empty', () => {
     expect(locatePointInPolygon(vec(0, 0), [])).toBe('outside');
     expect(locatePointInPolygon(vec(1, 1), [vec(0, 0), vec(2, 2)])).toBe('outside');
+  });
+});
+
+describe('clipPolygonToXRange', () => {
+  const square: Polygon = [vec(0, 0), vec(10, 0), vec(10, 10), vec(0, 10)];
+
+  it('keeps the part of a polygon inside the band', () => {
+    const clipped = clipPolygonToXRange(square, 2, 5);
+    expect(polygonArea(clipped)).toBeCloseTo(30, 9);
+    for (const p of clipped) {
+      expect(p.x).toBeGreaterThanOrEqual(2);
+      expect(p.x).toBeLessThanOrEqual(5);
+    }
+  });
+
+  it('returns the polygon unchanged when it lies inside the band', () => {
+    expect(polygonArea(clipPolygonToXRange(square, -5, 15))).toBeCloseTo(100, 9);
+  });
+
+  it('returns nothing when the polygon lies outside the band', () => {
+    expect(clipPolygonToXRange(square, 20, 30)).toEqual([]);
+  });
+
+  it('clips concave polygons to the right area', () => {
+    // U shape: 10x10 square without the 4x6 notch at x 3..7, y 0..6.
+    const u: Polygon = [vec(0, 0), vec(3, 0), vec(3, 6), vec(7, 6), vec(7, 0), vec(10, 0), vec(10, 10), vec(0, 10)];
+    expect(polygonArea(clipPolygonToXRange(u, 2, 8))).toBeCloseTo(6 * 10 - 4 * 6, 9);
+  });
+
+  it('band pieces add up to the whole polygon area', () => {
+    const triangle: Polygon = [vec(1, 1), vec(9, 3), vec(4, 9)];
+    let total = 0;
+    for (let x = 0; x < 10; x += 2) total += polygonArea(clipPolygonToXRange(triangle, x, x + 2));
+    expect(total).toBeCloseTo(polygonArea(triangle), 9);
   });
 });
