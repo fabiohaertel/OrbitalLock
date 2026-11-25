@@ -222,6 +222,19 @@ The arena is themed as a soccer field and the orbs as soccer balls. The theme is
 - The miss that triggers defeat also plays the whistle.
 - A miss always follows the player's input, so the whistle plays even on the player's very first interaction.
 
+#### Goal sound
+
+- Every time a capture occurs, a short, celebratory goal sound must be played.
+- A capture occurs when a new wall captures at least one orb. Its region becomes a goal net (D4, §5.4), and the goal sound starts at that moment.
+- One wall plays one goal sound, however many orbs or regions it captures.
+- A capture that wins the game also plays the goal sound.
+- No goal sound plays when a wall captures nothing: an empty region, a region over the maximum capture area (D3, D5), or a wall that encloses nothing. No goal sound plays for a miss either.
+- The goal sound is synthesized and about half a second long:
+  - a short swish of the ball hitting the net (noise whose pitch sweeps down);
+  - then a rising three-note major arpeggio (C, E, G) in a soft, retro tone, the last note ringing out and fading.
+- It is mid-pitched, between the low kick and the high whistle, so the three sounds stay distinct, and it is played at a moderate volume.
+- A capture always follows the player's input, so the goal sound plays even if it is the player's first interaction.
+
 #### General
 
 - Missing audio support must not affect gameplay. If the browser has no Web Audio support, the game runs silently.
@@ -329,9 +342,9 @@ Responsible for:
 
 Responsible for:
 
-- Collision sound and miss whistle (§5.5).
+- Collision sound, miss whistle and goal sound (§5.5).
 
-The physics system reports collisions and the game logic reports misses. Neither plays sounds itself.
+The physics system reports collisions, and the game logic reports misses and captures. Neither plays sounds itself.
 
 ## 9. Acceptance Criteria
 
@@ -360,6 +373,7 @@ The initial implementation must satisfy the following scenarios:
 | An orb bounces off an arena boundary, a wall or another orb | A soft kick sound plays |
 | Capture an orb | The captured region looks like a goal net with the ball trapped behind it |
 | A drawing is rejected or canceled (a miss) | A single referee whistle blow plays |
+| Capture one or more orbs with a wall | A short goal sound (net swish and rising notes) plays once as the goal net appears |
 
 ## 10. Future Features
 

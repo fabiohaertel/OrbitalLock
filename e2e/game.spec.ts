@@ -152,6 +152,8 @@ test('capturing every orb shows the victory screen, and "Play again" restarts', 
   expect(won.orbs[0]?.capture).toBe('captured');
   // A captured ball no longer moves, so it has no motion-blur trail (REQUIREMENTS §5.4).
   expect(await page.evaluate(() => window.__orbitalLock?.scene.ballVisuals[0]?.trailGhosts)).toBe(0);
+  // The capture that won the game played the goal sound once (REQUIREMENTS §5.5).
+  expect(await page.evaluate(() => window.__orbitalLock?.scene.goalSoundsPlayed)).toBe(1);
 
   await clickButton(page, 'playAgain');
   const after = await snapshot(page);
@@ -250,4 +252,6 @@ test('every miss plays one referee whistle, starting with the very first interac
   await shortStroke(page);
   expect((await snapshot(page)).hud.misses).toBe('Misses: 2 / 3');
   expect(await whistles()).toBe(2);
+  // A miss is not a capture: no goal sound.
+  expect(await page.evaluate(() => window.__orbitalLock?.scene.goalSoundsPlayed)).toBe(0);
 });
