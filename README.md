@@ -4,9 +4,9 @@ A 2D arcade puzzle game for the browser, inspired by classic territory-capture
 games. Capture the moving orbs by drawing walls with your mouse or finger, and
 trap every orb inside a region small enough to lock it in place.
 
-> **Status: early development.** The project scaffolding, the core geometry
-> library, the orb physics, drawing input, wall creation and region detection
-> are done, but the game isn't playable yet. Opening it in a browser
+> **Status: early development.** The game is playable in desktop and mobile
+> browsers, with mouse or touch. Final acceptance testing and polish are in
+> progress. Opening it in a browser
 > currently shows only a title screen. See [Roadmap](#roadmap) for progress.
 
 ## How to play
@@ -69,8 +69,17 @@ Then open the URL that Vite prints (by default <http://localhost:5173>).
 | `npm run preview` | Serve the production build locally |
 | `npm test` | Run the test suite once |
 | `npm run test:watch` | Run tests in watch mode |
+| `npm run test:e2e` | Run the browser tests (Playwright) |
 | `npm run typecheck` | Run the TypeScript compiler without emitting files |
 | `npm run lint` | Lint the project with ESLint |
+
+Before the first `npm run test:e2e`, install the browser once with
+`npx playwright install chromium`.
+
+In development builds, gameplay values can be overridden from the URL for
+quick balancing, e.g. `http://localhost:5173/?orbs=3&speed=200&seed=7`
+(supported: `orbs`, `radius`, `speed`, `maxArea`, `minLength`, `maxMisses`,
+`seed`).
 
 Use `npm test` rather than calling `vitest` directly. It goes through a small
 launcher that works around a Windows path issue (see
@@ -84,10 +93,16 @@ src/
   geometry/   vectors, segments, polylines, polygons, region detection
   physics/    orbs, fixed-timestep simulation, collisions
   drawing/    drawing input, wall validation and wall creation
-  layout/     screen-to-arena coordinate mapping
-  scenes/     Phaser scenes
+  capture/    capture rules: area limit, empty regions, capturing orbs
+  game/       game progress: status, failed attempts, score, timer
+  world/      GameWorld: the complete game without rendering
+  layout/     responsive layout, viewport watching, screen-to-arena mapping
+  render/     drawing the arena, orbs, walls and feedback with Phaser
+  ui/         HUD, victory/defeat screens, buttons
+  scenes/     Phaser scenes (glue between input, GameWorld and rendering)
   main.ts     game entry point
-tests/        unit tests, mirroring src/
+tests/        unit and integration tests, mirroring src/
+e2e/          browser tests (Playwright)
 docs/         requirements, roadmap and technical decisions
 scripts/      development helper scripts
 ```
@@ -106,10 +121,10 @@ Development follows the phases in [docs/ROADMAP.md](docs/ROADMAP.md):
 - [x] Phase 3 — Drawing input
 - [x] Phase 4 — Drawing validation and walls
 - [x] Phase 5 — Region detection
-- [ ] Phase 6 — Capture rules
-- [ ] Phase 7 — Game logic (win, lose, score, restart)
-- [ ] Phase 8 — Rendering, HUD and screens
-- [ ] Phase 9 — Responsive layout and touch devices
+- [x] Phase 6 — Capture rules
+- [x] Phase 7 — Game logic (win, lose, score, restart)
+- [x] Phase 8 — Rendering, HUD and screens
+- [x] Phase 9 — Responsive layout and touch devices
 - [ ] Phase 10 — Acceptance testing and polish
 
 Planned for after the first playable version: multiple levels, high scores,

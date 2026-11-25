@@ -1,0 +1,23 @@
+/** Colors and sizes shared by the renderer and UI. Colors are 0xRRGGBB; line widths are CSS pixels. */
+export const THEME = {
+  background: 0x0b0e17,
+  arena: 0x121829,
+  arenaBorder: 0x3a4a6b,
+  arenaBorderWidth: 2,
+  wall: 0xe6ecff,
+  wallWidth: 3,
+  preview: 0x7fd4ff,
+  previewWidth: 2,
+  failure: 0xff4d5e,
+  failureWidth: 4,
+  capturedRegion: 0x23345a,
+  orbActive: 0x5ce1e6,
+  orbCaptured: 0x6b7a99,
+  text: '#e6ecff',
+  textMuted: '#9aa6c4',
+  button: '#ffd166',
+  buttonHover: '#ffe39f',
+  overlay: 0x05070d,
+  overlayAlpha: 0.85,
+  fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+} as const;

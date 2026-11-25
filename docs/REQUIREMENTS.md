@@ -179,6 +179,8 @@ The scoring formula and bonuses will be defined during gameplay balancing.
 
 The initial implementation must provide the score tracking infrastructure without requiring a complex scoring system.
 
+Placeholder rule for the MVP: see D9 (§11.1).
+
 ## 7. Non-Functional Requirements
 
 ### 7.1 Performance
@@ -339,6 +341,7 @@ Resolves: whether invalid drawings consume lives.
 
 - Every rejected or canceled drawing counts as one failed attempt.
 - Defeat is triggered when the number of failed attempts exceeds the configured `maxFailedAttempts` (§3.8).
+- A valid wall whose enclosed region exceeds the maximum capture area is not a failed attempt: the wall stays and no capture occurs.
 
 #### D4 — Captured regions
 
@@ -377,6 +380,12 @@ Resolves: whether a wall can be partially drawn and then canceled manually.
 
 - The player cannot cancel a drawing in progress.
 - A drawing ends only when it is released (and then validated) or when the game cancels it: an active orb touches it (D2), or the browser cancels the input.
+
+#### D9 — Placeholder scoring
+
+Clarifies §6, which leaves the scoring formula to gameplay balancing.
+
+- Until balancing defines the formula, each captured orb awards 100 points.
 
 ### 11.2 Open Decisions
 

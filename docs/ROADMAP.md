@@ -24,10 +24,10 @@ with them, follow the requirements. Design decisions D1–D7 are in
 | 3 | Drawing input and path processing | ✅ Done (2026-11-24) | `src/drawing/`, `src/layout/arenaTransform.ts`; pure logic, not yet wired to Phaser input (must handle `pointerupoutside` when wired); drawings start only inside the arena |
 | 4 | Drawing validation and wall creation | ✅ Done (2026-11-24) | `WallBuilder` in `src/drawing/`; no manual cancel (D8); snap distance 15; caller must call `checkOrbContact` after each physics step and append created walls; not yet wired to Phaser |
 | 5 | Region detection | ✅ Done (2026-11-24) | `detectRegions` in `src/geometry/regions.ts`; full rebuild per committed wall (~10 ms for 1,000 segments); islands become holes; `regionsBoundedByWall` gives the regions a new wall created |
-| 6 | Capture system | ⬜ Not started | |
-| 7 | Game logic | ⬜ Not started | |
-| 8 | Rendering, HUD and screens | ⬜ Not started | Built up alongside phases 2–7 |
-| 9 | Responsive layout and devices | ⬜ Not started | |
+| 6 | Capture system | ✅ Done (2026-11-24) | `resolveCaptures` in `src/capture/`; call after appending each new wall; reports verdicts per region (`captured` / `tooLarge` / `empty`) and captured regions for rendering |
+| 7 | Game logic | ✅ Done (2026-11-24) | `GameWorld` in `src/world/` combines all systems; §9 headless scenarios in `tests/world/gameWorld.acceptance.test.ts`; too-large regions aren't failures (D3); 100 points per orb (D9); still no rendering or Phaser wiring |
+| 8 | Rendering, HUD and screens | ✅ Done (2026-11-24) | Playable on desktop; fixed HUD-above-arena layout (responsive layout is Phase 9); Playwright e2e in `e2e/`; dev-only URL overrides and test hook |
+| 9 | Responsive layout and devices | ✅ Done (2026-11-24) | `computeLayout` picks HUD top/side; canvas at device resolution (ratio capped at 2); touch gestures blocked; e2e covers resize, rotation, touch drawing and mobile viewports (Chromium emulation only, not real devices) |
 | 10 | Acceptance and hardening | ⬜ Not started | |
 
 ## Architecture
@@ -149,7 +149,7 @@ phases so each mechanic can be checked visually as soon as it exists.
   consistent and their areas sum to the arena area.
 - **Done when:** §3.5 is met.
 
-### Phase 6 — Capture system
+### Phase 6 — Capture system ✅
 
 - **Scope:** max-area rule per region (D5); empty-region rule; capture all orbs
   in a region at once; update orb states; remove captured orbs from physics;
@@ -162,7 +162,7 @@ phases so each mechanic can be checked visually as soon as it exists.
   other orbs bounce off the captured area.
 - **Done when:** §3.6 is met.
 
-### Phase 7 — Game logic
+### Phase 7 — Game logic ✅
 
 - **Scope:** state machine (playing, victory, defeat); failed-attempt counter
   (D3); basic score tracking (§6); elapsed timer; victory and defeat conditions;
@@ -177,7 +177,7 @@ phases so each mechanic can be checked visually as soon as it exists.
   drawing outside the arena, restart.
 - **Done when:** §3.8, §6 and §8.4 are met.
 
-### Phase 8 — Rendering, HUD and screens
+### Phase 8 — Rendering, HUD and screens ✅
 
 - **Scope:** draw arena, orbs, walls, drawing preview; visual feedback for
   invalid or canceled drawings; HUD (captured, remaining, time, score, restart);
@@ -188,7 +188,7 @@ phases so each mechanic can be checked visually as soon as it exists.
   appear; restart button works.
 - **Done when:** §5.2, §5.3 and §8.5 are met.
 
-### Phase 9 — Responsive layout and devices
+### Phase 9 — Responsive layout and devices ✅
 
 - **Scope:** fit the arena to the viewport (D6); handle resize and orientation
   changes; account for pixel density; map pointer coordinates; disable browser

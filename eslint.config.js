@@ -15,6 +15,12 @@ export default tseslint.config(
     },
   },
   {
+    rules: {
+      // Allow `const { omitted, ...rest } = obj` to drop a property.
+      '@typescript-eslint/no-unused-vars': ['error', { ignoreRestSiblings: true }],
+    },
+  },
+  {
     files: ['**/*.js', '**/*.mjs'],
     ...tseslint.configs.disableTypeChecked,
   },

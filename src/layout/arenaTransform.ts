@@ -11,6 +11,14 @@ export interface ArenaTransform {
   readonly scale: number;
 }
 
+/** Converts logical arena coordinates into a screen (game-canvas) position. */
+export function arenaToScreen(point: Vec2, transform: ArenaTransform): Vec2 {
+  return {
+    x: transform.offsetX + point.x * transform.scale,
+    y: transform.offsetY + point.y * transform.scale,
+  };
+}
+
 /**
  * Converts a screen (game-canvas) position into logical arena coordinates
  * (REQUIREMENTS §7.2). The result may lie outside the arena; callers decide
