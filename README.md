@@ -4,10 +4,10 @@ A 2D arcade puzzle game for the browser, inspired by classic territory-capture
 games. Capture the moving orbs by drawing walls with your mouse or finger, and
 trap every orb inside a region small enough to lock it in place.
 
-> **Status: playable.** The complete game loop works in desktop and mobile
+> **Status: complete MVP.** The full game loop works in desktop and mobile
 > browsers, with mouse or touch: draw walls, capture balls, win or lose, and
-> restart. Final acceptance testing and polish (Phase 10) are still in
-> progress. See [Roadmap](#roadmap) for progress.
+> restart. All roadmap phases are done and every acceptance scenario in the
+> requirements passes. See [Roadmap](#roadmap).
 
 ## How to play
 
@@ -33,10 +33,11 @@ The full rules are in [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
 
 ## Features
 
-What the first playable version includes:
+What the MVP includes:
 
 - Free-form wall drawing, not limited to horizontal or vertical lines
-- Orb physics that doesn't depend on frame rate, with orb-to-orb collisions
+- Orb physics that doesn't depend on frame rate, with orb-to-orb collisions.
+  Stress-tested with dozens of fast orbs and hundreds of wall segments
 - Detection of regions of any polygonal shape, with area-based capture rules
 - Configurable gameplay: number of orbs, orb size and speed, maximum capture
   area, minimum drawing length, failure limit
@@ -91,6 +92,11 @@ quick balancing, e.g. `http://localhost:5173/?orbs=3&speed=200&seed=7`
 (supported: `orbs`, `radius`, `speed`, `maxArea`, `minLength`, `maxMisses`,
 `seed`).
 
+The tests include a seeded stress test (many orbs and random walls, checking
+that nothing escapes the arena or crosses a wall) and a frame-budget check.
+Mobile performance was profiled only in Chromium emulation with CPU throttling,
+not on real devices.
+
 Use `npm test` rather than calling `vitest` directly. It goes through a small
 launcher that works around a Windows path issue (see
 [docs/DECISIONS.md](docs/DECISIONS.md)).
@@ -136,12 +142,12 @@ Development follows the phases in [docs/ROADMAP.md](docs/ROADMAP.md):
 - [x] Phase 7 — Game logic (win, lose, score, restart)
 - [x] Phase 8 — Rendering, HUD and screens
 - [x] Phase 9 — Responsive layout and touch devices
-- [ ] Phase 10 — Acceptance testing and polish
+- [x] Phase 10 — Acceptance testing and hardening
 
 The production build uses relative asset paths, so it also runs from a
 sub-path, such as inside itch.io's iframe.
 
-Planned for after the first playable version: multiple levels, high scores,
+Planned for after the MVP: multiple levels, high scores,
 obstacles, power-ups, special orbs, and music.
 
 ## Documentation
