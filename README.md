@@ -4,10 +4,10 @@ A 2D arcade puzzle game for the browser, inspired by classic territory-capture
 games. Capture the moving orbs by drawing walls with your mouse or finger, and
 trap every orb inside a region small enough to lock it in place.
 
-> **Status: early development.** The game is playable in desktop and mobile
-> browsers, with mouse or touch. Final acceptance testing and polish are in
-> progress. Opening it in a browser
-> currently shows only a title screen. See [Roadmap](#roadmap) for progress.
+> **Status: playable.** The complete game loop works in desktop and mobile
+> browsers, with mouse or touch: draw walls, capture balls, win or lose, and
+> restart. Final acceptance testing and polish (Phase 10) are still in
+> progress. See [Roadmap](#roadmap) for progress.
 
 ## How to play
 
@@ -23,6 +23,9 @@ trap every orb inside a region small enough to lock it in place.
   with no orbs captures nothing.
 - A drawing fails if it passes through an orb, or if an orb touches the path
   while you're still drawing it. Every failed drawing counts against you.
+- The arena is a soccer field, the orbs are rolling soccer balls, and captured
+  regions turn into goal nets. The theme is purely visual and doesn't change
+  any rule.
 - **Win** by capturing every orb. **Lose** when your failed drawings exceed the
   allowed limit.
 
@@ -30,7 +33,7 @@ The full rules are in [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
 
 ## Features
 
-These are the goals for the first playable version. Most are still being built.
+What the first playable version includes:
 
 - Free-form wall drawing, not limited to horizontal or vertical lines
 - Orb physics that doesn't depend on frame rate, with orb-to-orb collisions
@@ -39,7 +42,14 @@ These are the goals for the first playable version. Most are still being built.
   area, minimum drawing length, failure limit
 - Responsive layout for desktop, tablet and mobile, in portrait and landscape
 - Mouse and touch input
-- HUD with captured and remaining orbs, elapsed time, score and restart
+- HUD with captured and remaining orbs, elapsed time, score and restart, plus
+  victory and defeat screens
+- Soccer theme: striped green field with faint markings, shaded balls that roll
+  in their direction of travel with a motion-blur trail, and goal-net
+  captured regions
+- Synthesized sound effects (no audio files): a soft kick on every bounce, a
+  referee whistle on every miss, and a short goal jingle on every capture. The
+  game runs silently if the browser has no Web Audio support
 
 ## Tech stack
 
@@ -92,12 +102,13 @@ src/
   config/     gameplay configuration and defaults
   geometry/   vectors, segments, polylines, polygons, region detection
   physics/    orbs, fixed-timestep simulation, collisions
+  audio/      synthesized sound effects: kick, whistle and goal sounds
   drawing/    drawing input, wall validation and wall creation
   capture/    capture rules: area limit, empty regions, capturing orbs
   game/       game progress: status, failed attempts, score, timer
   world/      GameWorld: the complete game without rendering
   layout/     responsive layout, viewport watching, screen-to-arena mapping
-  render/     drawing the arena, orbs, walls and feedback with Phaser
+  render/     drawing the soccer field, balls, goal nets and feedback with Phaser
   ui/         HUD, victory/defeat screens, buttons
   scenes/     Phaser scenes (glue between input, GameWorld and rendering)
   main.ts     game entry point
@@ -126,6 +137,9 @@ Development follows the phases in [docs/ROADMAP.md](docs/ROADMAP.md):
 - [x] Phase 8 — Rendering, HUD and screens
 - [x] Phase 9 — Responsive layout and touch devices
 - [ ] Phase 10 — Acceptance testing and polish
+
+The production build uses relative asset paths, so it also runs from a
+sub-path, such as inside itch.io's iframe.
 
 Planned for after the first playable version: multiple levels, high scores,
 obstacles, power-ups, special orbs, and music.
