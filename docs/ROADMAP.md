@@ -28,7 +28,7 @@ with them, follow the requirements. Design decisions D1–D7 are in
 | 7 | Game logic | ✅ Done (2026-11-24) | `GameWorld` in `src/world/` combines all systems; §9 headless scenarios in `tests/world/gameWorld.acceptance.test.ts`; too-large regions aren't failures (D3); 100 points per orb (D9); still no rendering or Phaser wiring |
 | 8 | Rendering, HUD and screens | ✅ Done (2026-11-24) | Playable on desktop; fixed HUD-above-arena layout (responsive layout is Phase 9); Playwright e2e in `e2e/`; dev-only URL overrides and test hook |
 | 9 | Responsive layout and devices | ✅ Done (2026-11-24) | `computeLayout` picks HUD top/side; canvas at device resolution (ratio capped at 2); touch gestures blocked; e2e covers resize, rotation, touch drawing and mobile viewports (Chromium emulation only, not real devices) |
-| 10 | Acceptance and hardening | ⬜ Not started | |
+| 10 | Acceptance and hardening | ✅ Done (2026-11-25) | Every §9 row covered (headless + Playwright); seeded stress test and frame-budget check; fixes: right-click release no longer ends a drawing, orb–wall bounding-box early-out (~8× faster physics with many walls); mobile profiled with CPU throttling in emulation only, not on real devices |
 
 ## Architecture
 
@@ -202,7 +202,7 @@ phases so each mechanic can be checked visually as soon as it exists.
   (`scrollWidth ≤ innerWidth`); HUD remains usable.
 - **Done when:** §5.1, §7.2 and §7.3 are met.
 
-### Phase 10 — Acceptance and hardening
+### Phase 10 — Acceptance and hardening ✅
 
 - **Scope:** run the full §9 acceptance table; stress test with many orbs and
   walls; profile geometry on mobile; fix edge cases found.

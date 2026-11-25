@@ -290,6 +290,29 @@ describe('DrawingSession — finishing', () => {
     expect(session.isDrawing).toBe(true);
   });
 
+  // Regression (Phase 10): the mouse has one pointer id for all buttons, and
+  // Phaser reports every button's release as `pointerup`. A right click while
+  // drawing with the left button used to end the drawing early.
+  it('ignores the release of another mouse button while drawing', () => {
+    const session = new DrawingSession(ARENA, options);
+    session.begin(at(100, 100, 1));
+    session.move(at(200, 100, 1));
+    expect(session.end(at(200, 100, 1, false))).toBeUndefined();
+    expect(session.isDrawing).toBe(true);
+
+    session.move(at(300, 100, 1, false));
+    const result = session.end(at(300, 100, 1, true));
+    expect(result?.kind).toBe('completed');
+    expect(result?.kind === 'completed' && result.path.at(-1)).toEqual({ x: 300, y: 100 });
+  });
+
+  it('ignores the release of another mouse button before the drawing has started', () => {
+    const session = new DrawingSession(ARENA, options);
+    session.begin(at(100, 100, 1));
+    expect(session.end(at(100, 100, 1, false))).toBeUndefined();
+    expect(session.isPressed).toBe(true);
+  });
+
   it('can start a new drawing after finishing one', () => {
     const session = new DrawingSession(ARENA, options);
     stroke(session, [100, 100], [300, 100]);

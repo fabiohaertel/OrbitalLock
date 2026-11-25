@@ -74,6 +74,26 @@ async function shortStroke(page: Page): Promise<void> {
   await page.mouse.up();
 }
 
+/** Draws a closed square of half-size `half` centered on an arena point, kept inside the arena. */
+async function drawSquareAround(page: Page, cx: number, cy: number, half: number): Promise<void> {
+  const corners = [
+    [cx - half, cy - half],
+    [cx + half, cy - half],
+    [cx + half, cy + half],
+    [cx - half, cy + half],
+    [cx - half + 2, cy - half + 2],
+  ].map(([x, y]) => [Math.min(Math.max(x ?? 0, 2), 998), Math.min(Math.max(y ?? 0, 2), 623)] as const);
+
+  const start = await arenaToPage(page, corners[0]?.[0] ?? 0, corners[0]?.[1] ?? 0);
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  for (const [x, y] of corners.slice(1)) {
+    const point = await arenaToPage(page, x, y);
+    await page.mouse.move(point.x, point.y, { steps: 12 });
+  }
+  await page.mouse.up();
+}
+
 test('HUD shows the counters, time and score', async ({ page }) => {
   await open(page);
   const initial = await snapshot(page);
@@ -126,23 +146,7 @@ test('capturing every orb shows the victory screen, and "Play again" restarts', 
   const [orb] = (await snapshot(page)).orbs;
   if (orb === undefined) throw new Error('no orb');
 
-  const half = 70;
-  const corners = [
-    [orb.x - half, orb.y - half],
-    [orb.x + half, orb.y - half],
-    [orb.x + half, orb.y + half],
-    [orb.x - half, orb.y + half],
-    [orb.x - half + 2, orb.y - half + 2],
-  ].map(([x, y]) => [Math.min(Math.max(x ?? 0, 2), 998), Math.min(Math.max(y ?? 0, 2), 623)] as const);
-
-  const start = await arenaToPage(page, corners[0]?.[0] ?? 0, corners[0]?.[1] ?? 0);
-  await page.mouse.move(start.x, start.y);
-  await page.mouse.down();
-  for (const [x, y] of corners.slice(1)) {
-    const point = await arenaToPage(page, x, y);
-    await page.mouse.move(point.x, point.y, { steps: 12 });
-  }
-  await page.mouse.up();
+  await drawSquareAround(page, orb.x, orb.y, 70);
 
   await expect.poll(async () => (await snapshot(page)).overlay).toEqual({ visible: true, title: 'VICTORY' });
   const won = await snapshot(page);
@@ -160,6 +164,82 @@ test('capturing every orb shows the victory screen, and "Play again" restarts', 
   expect(after.status).toBe('playing');
   expect(after.overlay.visible).toBe(false);
   expect(after.hud.captured).toBe('Captured: 0 / 1');
+});
+
+test('Capture an orb → the captured region looks like a goal net with the ball trapped inside', async ({ page }) => {
+  // Two almost stationary orbs: capturing one keeps the game running, so no overlay covers the arena.
+  await open(page, '?orbs=2&speed=1&seed=3');
+  const [orb, other] = (await snapshot(page)).orbs;
+  if (orb === undefined || other === undefined) throw new Error('need two orbs');
+  const half = 70;
+  if (Math.abs(other.x - orb.x) < half + 2 * other.radius && Math.abs(other.y - orb.y) < half + 2 * other.radius) {
+    throw new Error('layout changed: the second orb is too close to the first');
+  }
+
+  await drawSquareAround(page, orb.x, orb.y, half);
+  await expect.poll(async () => (await snapshot(page)).orbs[0]?.capture).toBe('captured');
+  expect((await snapshot(page)).status).toBe('playing');
+  // A capture that does not win the game still plays the goal sound once (REQUIREMENTS §5.5).
+  expect(await page.evaluate(() => window.__orbitalLock?.scene.goalSoundsPlayed)).toBe(1);
+
+  // Sample a row of canvas pixels across the captured region, below the ball.
+  const pixels = await page.evaluate(
+    async ([x, y, halfSize]) => {
+      const hook = window.__orbitalLock;
+      if (hook === undefined) throw new Error('test hook missing');
+      const scene = hook.scene;
+      const arena = scene.currentLayout.arena;
+      const sums: number[] = [];
+      for (let px = (x - halfSize + 10) * arena.scale; px <= (x + halfSize - 10) * arena.scale; px++) {
+        sums.push(
+          await new Promise<number>((resolve) => {
+            scene.game.renderer.snapshotPixel(
+              Math.round(arena.offsetX + px),
+              Math.round(arena.offsetY + (y + 40) * arena.scale),
+              (color) => {
+                const c = color as Phaser.Display.Color;
+                resolve(c.red + c.green + c.blue);
+              },
+            );
+          }),
+        );
+      }
+      return sums;
+    },
+    [orb.x, orb.y, half] as const,
+  );
+  // A dark, shadowed backdrop (much darker than the field stripes) crossed by light net cords.
+  const backdrop = pixels.filter((sum) => sum < 160).length;
+  const cords = pixels.filter((sum) => sum > 400).length;
+  expect(backdrop).toBeGreaterThan(pixels.length / 3);
+  expect(cords).toBeGreaterThanOrEqual(4);
+});
+
+// Regression (Phase 10): Phaser reports every mouse button's release as `pointerup`, so
+// a right click while drawing used to end the drawing at that point.
+test('a right click while drawing does not end the drawing', async ({ page }) => {
+  await open(page, '?orbs=1&speed=1&seed=7');
+  const [orb] = (await snapshot(page)).orbs;
+  if (orb === undefined) throw new Error('no orb');
+  // A horizontal line well away from the orb.
+  const y = orb.y > 312 ? 120 : 500;
+
+  const start = await arenaToPage(page, 100, y);
+  const middle = await arenaToPage(page, 400, y);
+  const end = await arenaToPage(page, 800, y);
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(middle.x, middle.y, { steps: 10 });
+  await page.mouse.down({ button: 'right' });
+  await page.mouse.up({ button: 'right' });
+  expect(await page.evaluate(() => window.__orbitalLock?.world.isDrawing)).toBe(true);
+  await page.mouse.move(end.x, end.y, { steps: 10 });
+  await page.mouse.up();
+
+  const walls = await page.evaluate(() => window.__orbitalLock?.world.walls.map((wall) => wall.path.at(-1)?.x) ?? []);
+  expect(walls).toHaveLength(1);
+  expect(walls[0]).toBeGreaterThan(790);
+  expect((await snapshot(page)).hud.misses).toBe('Misses: 0 / 3');
 });
 
 test('the arena is a green soccer field and orbs are drawn as soccer balls', async ({ page }) => {

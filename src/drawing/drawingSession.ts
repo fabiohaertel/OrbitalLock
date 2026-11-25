@@ -9,7 +9,11 @@ export interface PointerInput {
   readonly pointerId: number;
   /** Arena coordinates; may lie outside the arena. */
   readonly position: Vec2;
-  /** True for the primary mouse button or a touch. Only primary input can start a drawing. */
+  /**
+   * True for the primary mouse button or a touch. Only primary input can start
+   * a drawing, and only releasing it ends one: on a release, this is the
+   * button that was released.
+   */
   readonly isPrimary: boolean;
 }
 
@@ -158,10 +162,13 @@ export class DrawingSession {
   /**
    * Finishes the press when the active pointer is released, including the
    * release position. Returns `notStarted` if it never became a drawing, and
-   * undefined for any other pointer.
+   * undefined for any other pointer. Releasing another mouse button (e.g. a
+   * right click while drawing) shares the mouse's pointer id but is not
+   * primary, so it is ignored too: only releasing the primary button ends the
+   * drawing (REQUIREMENTS §3.3).
    */
   end(input: PointerInput): DrawingResult | undefined {
-    if (input.pointerId !== this.activePointerId) {
+    if (input.pointerId !== this.activePointerId || !input.isPrimary) {
       return undefined;
     }
     this.move(input);

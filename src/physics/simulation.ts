@@ -137,6 +137,9 @@ export function resolveArenaBounds(orb: Orb, arena: ArenaDimensions): boolean {
  * Returns true when the orb bounced (it was moving into the wall).
  */
 export function resolveWallCollision(orb: Orb, wall: Segment): boolean {
+  if (!nearSegmentBounds(orb, wall)) {
+    return false;
+  }
   const closest = closestPointOnSegment(orb.position, wall);
   const offset = subtract(orb.position, closest);
   const distanceSq = lengthSquared(offset);
@@ -155,6 +158,24 @@ export function resolveWallCollision(orb: Orb, wall: Segment): boolean {
   }
   orb.velocity = subtract(orb.velocity, scale(normal, 2 * approach));
   return true;
+}
+
+/**
+ * Cheap rejection test: false when the orb is too far from the segment's
+ * bounding box to touch it. Most walls are far from any given orb, and this
+ * check allocates nothing, which keeps frames with many orbs and long freehand
+ * walls fast on mobile (REQUIREMENTS §7.1).
+ */
+function nearSegmentBounds(orb: Orb, wall: Segment): boolean {
+  const { x, y } = orb.position;
+  const r = orb.radius;
+  const { a, b } = wall;
+  return (
+    x + r > Math.min(a.x, b.x) &&
+    x - r < Math.max(a.x, b.x) &&
+    y + r > Math.min(a.y, b.y) &&
+    y - r < Math.max(a.y, b.y)
+  );
 }
 
 /**

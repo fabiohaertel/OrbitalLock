@@ -31,6 +31,12 @@ This document records project-level technical decisions only.
     are cut to 0.25 s.
   - Each step is split into sub-steps so no orb moves more than half its radius
     per sub-step. That prevents orbs passing through walls at any speed.
+  - Before the exact orb–wall test, a segment is skipped when the orb is
+    farther than its radius from the segment's bounding box. This made a step
+    with 60 orbs and 960 wall segments about 8× faster.
+  - Crowded, fast orbs can push each other briefly into a wall, by up to about
+    20% of the radius, until the next sub-step pushes them back out. They never
+    cross a wall. The Phase 10 stress test checks this.
 - **Drawing input** (`src/drawing/drawingSession.ts`):
   - A drawing starts only from primary input (left mouse button or a touch)
     pressed inside the arena. A press outside the arena (e.g. on the HUD) does
@@ -43,6 +49,10 @@ This document records project-level technical decisions only.
     (REQUIREMENTS §3.3, D3).
   - Only the pointer that started the drawing is followed; other pointers,
     such as a second finger, are ignored.
+  - Only releasing the primary button ends a drawing. The mouse uses one
+    pointer id for all its buttons, and Phaser reports each button's release
+    as `pointerup`. So a right click during a drawing is ignored instead of
+    ending it.
   - Samples closer than 2 units to the previous one are dropped to filter
     jitter. On release, the path is simplified with a 1-unit tolerance, then
     checked against `minDrawingLength`. A started drawing shorter than that is
@@ -86,7 +96,22 @@ This document records project-level technical decisions only.
   - `regionsBoundedByWall(regions, wallId)` returns the regions a new wall
     created or reshaped. Phase 6 applies the capture rules to these.
   - Performance: pairs of segments are compared after a bounding-box check.
-    About 1,000 segments take roughly 10 ms, run once per committed wall.
+    About 1,000 heavily crossing segments take roughly 20 ms on desktop,
+    once per committed wall. With 4× CPU throttling on an emulated phone, 414
+    segments took about 21 ms: at most one dropped frame per wall.
+- **Hardening (Phase 10):**
+  - `tests/world/gameWorld.stress.test.ts` plays seeded games with up to 40
+    orbs and random walls: lines, acute wedges, loops and strokes leaving the
+    arena. After every frame it checks that no orb leaves the arena, crosses a
+    wall or enters captured space, and that the regions still cover the whole
+    arena.
+  - `tests/world/frameBudget.test.ts` checks the cost of a busy frame (60
+    orbs, 960 wall segments, a 1,500-point drawing in progress) and of a region
+    rebuild. Its budgets are generous, so it only catches real regressions.
+  - Mobile profile (Pixel 7 emulation, 4× CPU throttling, 30 orbs, 414 wall
+    segments): simulation about 0.6 ms per frame, full scene update (simulation
+    plus building the draw calls) about 7.8 ms per frame. GPU time was not
+    measured: headless Chromium renders WebGL in software.
 - **Capture rules** (`src/capture/captureSystem.ts`):
   - After each committed wall, only the regions that wall created or reshaped
     are evaluated, each on its own (D5).

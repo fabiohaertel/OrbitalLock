@@ -128,6 +128,33 @@ describe('wall collisions', () => {
     expect(orb.velocity).toEqual({ x: 10, y: 0 });
   });
 
+  // The bounding-box early-out (Phase 10) must never skip a real contact.
+  it('still hits a wall end diagonally off its bounding box', () => {
+    // Center 7 units left of and 7 above the end (100, 50): 9.9 < radius 10.
+    const orb = makeOrb(93, 43, 10, 10);
+    expect(resolveWallCollision(orb, wall(100, 50, 150, 50))).toBe(true);
+    expect(Math.hypot(orb.position.x - 100, orb.position.y - 50)).toBeCloseTo(10, 9);
+  });
+
+  it('still hits an axis-aligned wall it barely overlaps', () => {
+    const orb = makeOrb(50, 40.5, 0, 10);
+    expect(resolveWallCollision(orb, wall(0, 50, 100, 50))).toBe(true);
+    expect(orb.position.y).toBeCloseTo(40, 9);
+  });
+
+  it('does not touch a wall exactly one radius away', () => {
+    const orb = makeOrb(50, 40, 0, 10);
+    expect(resolveWallCollision(orb, wall(0, 50, 100, 50))).toBe(false);
+    expect(orb.velocity).toEqual({ x: 0, y: 10 });
+  });
+
+  it('ignores a wall whose bounding box is close but whose end is out of reach', () => {
+    // Inside the box grown by the radius, but 8.5 units from (100, 50) on both axes: 12 > radius.
+    const orb = makeOrb(91.5, 41.5, 10, 10);
+    expect(resolveWallCollision(orb, wall(100, 50, 150, 50))).toBe(false);
+    expect(orb.position).toEqual({ x: 91.5, y: 41.5 });
+  });
+
   it('never tunnels through a thin wall, even at very high speed', () => {
     const environment: PhysicsEnvironment = { arena, walls: [wall(100, 0, 100, 100)] };
     for (const speed of [100, 1_000, 10_000, 100_000]) {
