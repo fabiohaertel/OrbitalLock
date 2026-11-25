@@ -80,7 +80,7 @@ describe('goal sound cue (REQUIREMENTS §5.5)', () => {
     expect(soundCuesFor(tooLarge).goal).toBe(false);
   });
 
-  it('does not play for a miss, which whistles instead', () => {
+  it('does not play for a foul, which whistles instead', () => {
     const world = worldWith(() => [makeOrb(800, 500, 0, 0, 12)]);
     const events = draw(world, [[100, 100], [120, 100]]); // too short
     expect(soundCuesFor(events)).toEqual({ kick: false, whistles: 1, goal: false });

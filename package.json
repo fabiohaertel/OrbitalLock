@@ -1,9 +1,9 @@
 {
-  "name": "orbital-lock",
+  "name": "goal-lock",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Orbital Lock - 2D arcade territory-capture puzzle game built with Phaser 4.",
+  "description": "Goal Lock - 2D arcade territory-capture puzzle game built with Phaser 4.",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

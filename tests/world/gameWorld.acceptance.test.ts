@@ -51,8 +51,8 @@ function square(x: number, y: number, size: number): [number, number][] {
   ];
 }
 
-/** A started drawing shorter than the minimum length: rejected, so a miss (D3). */
-function missDrawing(world: GameWorld): GameEvent[] {
+/** A started drawing shorter than the minimum length: rejected, so a foul (D3). */
+function foulDrawing(world: GameWorld): GameEvent[] {
   return [
     ...world.pointerDown(input(100, 100)),
     ...world.pointerMove(input(110, 100)),
@@ -156,18 +156,18 @@ describe('§9 acceptance (headless)', () => {
 
   it('Exceed the failure limit → defeat is triggered', () => {
     const world = worldWith(() => [makeOrb(800, 500, 0, 0, 12)], { maxFailedAttempts: 2 });
-    expect(missDrawing(world)).toHaveLength(1);
-    expect(missDrawing(world)).toHaveLength(1);
+    expect(foulDrawing(world)).toHaveLength(1);
+    expect(foulDrawing(world)).toHaveLength(1);
     expect(world.status).toBe('playing');
-    const events = missDrawing(world);
+    const events = foulDrawing(world);
     expect(events.map((e) => e.kind)).toEqual(['attemptFailed', 'gameOver']);
     expect(events.at(-1)).toEqual({ kind: 'gameOver', status: 'defeat' });
     expect(world.progress.failedAttempts).toBe(3);
   });
 
-  it('Click or tap the arena without moving the pointer → nothing is drawn and no miss is counted', () => {
+  it('Click or tap the arena without moving the pointer → nothing is drawn and no foul is counted', () => {
     const world = worldWith(() => [makeOrb(300, 300, 0, 0, 12)], { maxFailedAttempts: 0 });
-    // Even with no misses allowed, clicks never end the game.
+    // Even with no fouls allowed, clicks never end the game.
     expect(click(world, 100, 100)).toEqual([]);
     expect(click(world, 305, 300)).toEqual([]); // on an orb
     // Jitter smaller than the start distance is still a click.
@@ -182,9 +182,9 @@ describe('§9 acceptance (headless)', () => {
     expect(world.isDrawing).toBe(false);
   });
 
-  it('Start drawing, then release short → the drawing is rejected as a miss', () => {
+  it('Start drawing, then release short → the drawing is rejected as a foul', () => {
     const world = worldWith(() => [makeOrb(800, 500, 0, 0, 12)]);
-    expect(missDrawing(world)).toEqual([
+    expect(foulDrawing(world)).toEqual([
       { kind: 'attemptFailed', attempt: { kind: 'rejected', reason: 'tooShort' } },
     ]);
     expect(world.progress.failedAttempts).toBe(1);
@@ -221,7 +221,7 @@ describe('§9 acceptance (headless)', () => {
 
     run(world, 1);
     draw(world, [[8, 300], [992, 300]]);
-    missDrawing(world); // failed attempt
+    foulDrawing(world); // failed attempt
     expect(world.progress).not.toEqual(initialProgress);
 
     world.restart();
@@ -234,7 +234,7 @@ describe('§9 acceptance (headless)', () => {
 
   it('Restart after defeat → play resumes', () => {
     const world = worldWith(() => [makeOrb(800, 500, 0, 0, 12)], { maxFailedAttempts: 0 });
-    missDrawing(world);
+    foulDrawing(world);
     expect(world.status).toBe('defeat');
     world.restart();
     expect(world.status).toBe('playing');
@@ -325,7 +325,7 @@ describe('collision events (REQUIREMENTS §5.5)', () => {
 
   it('reports no collisions once the game is over', () => {
     const world = worldWith(() => [makeOrb(500, 40, 0, -160, 12)], { maxFailedAttempts: 0 });
-    missDrawing(world);
+    foulDrawing(world);
     expect(world.status).toBe('defeat');
     expect(run(world, 1)).toEqual([]);
   });

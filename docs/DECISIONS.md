@@ -1,4 +1,4 @@
-# Orbital Lock — Technical Decisions
+# Goal Lock — Technical Decisions
 
 Gameplay design decisions (D1–D7) are part of the requirements: see
 [REQUIREMENTS.md §11](REQUIREMENTS.md#11-design-decisions).
@@ -108,8 +108,8 @@ This document records project-level technical decisions only.
   - `tests/world/frameBudget.test.ts` checks the cost of a busy frame (60
     orbs, 960 wall segments, a 1,500-point drawing in progress) and of a region
     rebuild. Its budgets are generous, so it only catches real regressions.
-  - Mobile profile (Pixel 7 emulation, 4× CPU throttling, 30 orbs, 414 wall
-    segments): simulation about 0.6 ms per frame, full scene update (simulation
+  - Mobile profile (Pixel 7 emulation, 4× CPU throttling, 30 orbs at the then
+    default speed of 160, 414 wall segments): simulation about 0.6 ms per frame, full scene update (simulation
     plus building the draw calls) about 7.8 ms per frame. GPU time was not
     measured: headless Chromium renders WebGL in software.
 - **Capture rules** (`src/capture/captureSystem.ts`):
@@ -144,14 +144,36 @@ This document records project-level technical decisions only.
   - One Phaser Graphics object, positioned and scaled by the arena
     transform, redraws everything in arena coordinates each frame: arena,
     captured regions (filled solid, D4), walls, orbs (greyed when captured),
-    the drawing preview and the failure flash. Phaser Text objects form the
-    HUD and the victory/defeat overlay.
+    the drawing preview and the failure flash.
   - Failed drawings flash red for 0.6 s along the path the player drew
     (REQUIREMENTS §3.7).
-  - The HUD shows "Misses: n / max" (failed attempts against the limit) in
-    addition to the §5.2 fields, so the player can see how close defeat is.
+  - The HUD shows the fouls (failed attempts against the limit) in addition
+    to the §5.2 fields, so the player can see how close defeat is.
   - Line widths and HUD fonts are set in CSS pixels, so they look the same at
     any arena scale or pixel density.
+- **Interface style** (`src/ui/`, REQUIREMENTS §5.6):
+  - Font: Orbitron (SIL Open Font License, `src/assets/fonts/OFL.txt`),
+    weights 500 and 800, Latin subset (about 7 KB each), taken from the
+    `@fontsource/orbitron` 5.3.0 package. The files are in the repository and
+    imported through Vite, so the build works offline and from a sub-path; no
+    npm dependency was added.
+  - `loadUiFonts` (`src/ui/fonts.ts`) loads both weights with `FontFace`
+    before the Phaser game is created, because canvas text is measured when
+    it is created and does not redraw when a web font arrives later. It waits
+    at most 3 s and never fails, so the game always starts.
+  - Building blocks: `StatCard` (a Graphics rounded panel with a label and a
+    value Text, plus foul pips and the danger pulse) and `PillButton` (a
+    Container with a Graphics pill, an optional restart icon drawn with lines,
+    and a label). `Hud` and `GameOverOverlay` combine them. A container is
+    interactive only with a hit area, so `PillButton.place` resizes it.
+  - `buildHudModel` gives each card a label, a value and a plain-text
+    equivalent (`Captured: 3 / 8`). The plain text is what `Hud.read()`
+    returns to the browser tests.
+  - The title uses letter spacing, which makes Phaser draw it one character at
+    a time; that is fine because it never changes. Values are plain Text and
+    are re-rendered only when they change.
+  - The overlay panel is designed at 440 × 232 CSS pixels and scaled down,
+    never up, to fit the arena. Labels and button text keep a minimum size.
   - The scene holds no rules. It forwards pointer input (left button or
     touch; `pointerup`, `pointerupoutside`, and touch cancels reported as
     `wasCanceled`) and frame time to `GameWorld`, then draws its state.
@@ -163,10 +185,12 @@ This document records project-level technical decisions only.
   - The pixel ratio is capped at 2 to bound GPU fill-rate, as the
     scale-and-responsive skill advises. 3× phones render at 2× and are
     upscaled.
-  - `computeLayout` is a pure function. It tries the HUD on top (fields wrap
-    into rows on narrow screens) and in a 176-px side column, and keeps
-    whichever leaves the larger arena: top on desktop and portrait, side on
-    landscape phones. The arena keeps its 16:10 ratio (D6), is centered in the
+  - `computeLayout` is a pure function. It tries the HUD on top (one bar when
+    the title, five cards and the button fit, at least 888 CSS pixels wide;
+    otherwise the cards wrap into rows below a header) and in a 184-px side
+    column, and keeps whichever leaves the larger arena: top on 16:10
+    desktops and in portrait, side on landscape phones and on 16:9 windows.
+    All HUD metrics sit on an 8-px grid. The arena keeps its 16:10 ratio (D6), is centered in the
     remaining space, and never overlaps the HUD. In portrait the arena is
     necessarily small.
   - Resize, orientation change and mobile toolbar changes are watched
@@ -183,9 +207,9 @@ This document records project-level technical decisions only.
     (REQUIREMENTS §7.3).
 - **Development aids** (development builds only; absent from `npm run build`):
   - URL overrides for manual balancing and browser tests: `?orbs=`,
-    `radius=`, `speed=`, `maxArea=`, `minLength=`, `maxMisses=`, and `seed=`
+    `radius=`, `speed=`, `maxArea=`, `minLength=`, `maxFouls=`, and `seed=`
     for a reproducible layout.
-  - `window.__orbitalLock`, a test hook exposing the world, scene and
+  - `window.__goalLock`, a test hook exposing the world, scene and
     coordinate conversions to Playwright.
 - **Browser tests:** Playwright 1.65.0 with Chromium only (`npm run test:e2e`,
   tests in `e2e/`). It starts its own Vite dev server on port 5199.
@@ -193,5 +217,10 @@ This document records project-level technical decisions only.
     through the Chrome DevTools Protocol.
   - Two workers and a 60 s timeout. With more workers, software-rendered WebGL
     starves the CPU and tests time out.
+- **Gameplay defaults** (`DEFAULT_GAMEPLAY_CONFIG` in `src/config/gameConfig.ts`):
+  7 orbs, radius 12, speed 250 units per second, maximum capture area 15%,
+  minimum drawing length 40, and 3 failed attempts allowed. The capture area,
+  orb count and speed are set by REQUIREMENTS §4; the others are provisional
+  balancing values. All of them can be changed in that one place.
 - **Logical coordinates:** game state uses the fixed `ARENA` coordinate space in
   `src/config/gameConfig.ts` (1000 × 625 units), implementing D6.

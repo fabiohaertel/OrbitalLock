@@ -13,7 +13,7 @@ const NUMERIC_PARAMS: Readonly<Record<string, keyof GameplayConfig>> = {
   speed: 'orbSpeed',
   maxArea: 'maxCaptureAreaRatio',
   minLength: 'minDrawingLength',
-  maxMisses: 'maxFailedAttempts',
+  maxFouls: 'maxFailedAttempts',
 };
 
 /**

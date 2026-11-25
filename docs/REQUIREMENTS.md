@@ -1,8 +1,8 @@
-# Orbital Lock — Game Requirements
+# Goal Lock — Game Requirements
 
 ## 1. Overview
 
-Orbital Lock is a 2D arcade puzzle game inspired by classic territory-capture games such as JezzBall.
+Goal Lock is a 2D arcade puzzle game inspired by classic territory-capture games such as JezzBall.
 
 The player must capture moving orbs by drawing free-form lines with the mouse or touch input, creating enclosed regions.
 
@@ -48,7 +48,7 @@ Functional requirements:
 ### 3.3 Drawing System
 
 - The player starts drawing by pressing and holding the primary mouse button or touching the screen, then moving the pointer. The drawing starts once the pointer has moved a small distance away from where it was pressed. That distance is just large enough to ignore the jitter of a click or tap. The path begins at the press point.
-- A press that is released (a click or tap) or canceled before the drawing starts is not a drawing attempt. It draws nothing, is not rejected and is not a miss (D3). This applies anywhere in the arena, including on an orb.
+- A press that is released (a click or tap) or canceled before the drawing starts is not a drawing attempt. It draws nothing, is not rejected and is not a foul (D3). This applies anywhere in the arena, including on an orb.
 - Mouse or touch movement defines the drawing path.
 - Releasing the primary mouse button or ending the touch finishes the drawing attempt.
 - The player can draw horizontal, vertical, diagonal, and arbitrary free-form paths.
@@ -101,8 +101,8 @@ Victory:
 
 Defeat:
 
-- The player exceeds the configured number of failed drawing attempts or available lives.
-- Every rejected or canceled drawing counts as a failed attempt. A click or tap that never started a drawing (§3.3) does not: see D3 (§11.1).
+- The player exceeds the configured number of failed drawing attempts (fouls) or available lives.
+- Every rejected or canceled drawing counts as a failed attempt, called a foul in the game. A click or tap that never started a drawing (§3.3) does not: see D3 (§11.1).
 
 The game must provide:
 
@@ -124,6 +124,8 @@ The following values must be configurable:
 Initial balancing defaults:
 
 - Maximum capture area: 15% of total arena area.
+- Initial number of orbs: 7.
+- Orb movement speed: 250 arena units per second (the arena is 1000 × 625 units, D6). Playtesting found 160 and 200 too slow and 320 too fast.
 
 Other values should be selected during prototype development and remain configurable.
 
@@ -161,16 +163,13 @@ The initial interface must include:
 
 The HUD must display relevant gameplay information without obstructing the arena.
 
-Example:
+- Each field is a scoreboard card: a small upper-case label above (or, in a narrow side column, beside) a large value.
+- The HUD also shows the fouls: failed attempts against the allowed limit (D3). They are shown as one pip per allowed foul, filled for each foul used. When the next foul would lose the game, the fouls card pulses red. Very large or zero limits are shown as a number (`used/max`) instead of pips.
+- The score value briefly enlarges when it goes up.
 
-    ORBITAL LOCK
+Example (wide screen, one bar):
 
-    Captured: 3 / 8
-    Remaining: 5
-    Time: 00:42
-    Score: 450
-
-    [Restart]
+    GOAL LOCK  [CAPTURED 3/8] [REMAINING 5] [TIME 00:42] [SCORE 450] [FOULS ●○○]  (↻ RESTART)
 
 ### 5.4 Visual Style
 
@@ -194,7 +193,7 @@ The arena is themed as a soccer field and the orbs as soccer balls. The theme is
 - Rolling and the trail are purely visual. They are derived from the orbs' positions, never change the physics, and do not depend on the frame rate.
 - Captured orbs must remain visually distinguishable from active orbs (captured balls are drawn dimmed).
 - A captured region (D4) must look like a soccer goal net with the captured balls trapped inside it:
-  - a darker, shadowed backdrop, so captured regions stand out from the open field;
+  - a shadowed backdrop in a medium-dark green: noticeably darker than the field's stripes, so captured regions still stand out from the open field, but not so dark that it looks black, and light enough that the white net cords and the captured balls stay clearly visible;
   - a mesh of white net cords in a diamond pattern, clipped to the region's shape;
   - the net is drawn over the captured balls, so they appear caught behind it.
 - Inside a captured region, areas that are not captured, such as uncaptured islands, have no net and keep the field's stripes.
@@ -209,18 +208,18 @@ The arena is themed as a soccer field and the orbs as soccer balls. The theme is
   - an arena boundary,
   - a permanent wall, including the boundary of a captured region (D4), or
   - another active orb.
-- An orb that touches without bouncing (for example, one already moving away from the wall it overlaps) does not make a sound. An orb touching an in-progress drawing is not a collision: that cancels the drawing (D2) and is a miss (see below).
+- An orb that touches without bouncing (for example, one already moving away from the wall it overlaps) does not make a sound. An orb touching an in-progress drawing is not a collision: that cancels the drawing (D2) and is a foul (see below).
 - The collision sound is a soft kick of a soccer ball: a short, muffled, low-pitched thump played at a low volume.
 - Collisions that happen within the same rendered frame are played as one sound, so simultaneous impacts do not stack into a loud, clipped sound.
 - Browsers block audio until the user interacts with the page. Collisions before the first interaction are silent; sounds play normally after it.
 
-#### Miss whistle
+#### Foul whistle
 
-- Every time a miss occurs, a referee's whistle must be played: a single short blow, as when a referee calls a foul.
-- A miss is a failed attempt as defined in D3: every rejected or canceled drawing. A click or tap that never started a drawing (§3.3) is not a miss and plays no whistle. A miss is the same event that increments the HUD's miss counter and shows the failure feedback (§3.7).
-- A valid wall whose region is too large is not a miss (D3), so it plays no whistle.
-- The miss that triggers defeat also plays the whistle.
-- A miss always follows the player's input, so the whistle plays even on the player's very first interaction.
+- Every time a foul occurs, a referee's whistle must be played: a single short blow, as when a referee calls a foul.
+- A foul is a failed attempt as defined in D3: every rejected or canceled drawing. A click or tap that never started a drawing (§3.3) is not a foul and plays no whistle. A foul is the same event that increments the HUD's foul counter and shows the failure feedback (§3.7).
+- A valid wall whose region is too large is not a foul (D3), so it plays no whistle.
+- The foul that triggers defeat also plays the whistle.
+- A foul always follows the player's input, so the whistle plays even on the player's very first interaction.
 
 #### Goal sound
 
@@ -228,7 +227,7 @@ The arena is themed as a soccer field and the orbs as soccer balls. The theme is
 - A capture occurs when a new wall captures at least one orb. Its region becomes a goal net (D4, §5.4), and the goal sound starts at that moment.
 - One wall plays one goal sound, however many orbs or regions it captures.
 - A capture that wins the game also plays the goal sound.
-- No goal sound plays when a wall captures nothing: an empty region, a region over the maximum capture area (D3, D5), or a wall that encloses nothing. No goal sound plays for a miss either.
+- No goal sound plays when a wall captures nothing: an empty region, a region over the maximum capture area (D3, D5), or a wall that encloses nothing. No goal sound plays for a foul either.
 - The goal sound is synthesized and about half a second long:
   - a short swish of the ball hitting the net (noise whose pitch sweeps down);
   - then a rising three-note major arpeggio (C, E, G) in a soft, retro tone, the last note ringing out and fading.
@@ -238,6 +237,18 @@ The arena is themed as a soccer field and the orbs as soccer balls. The theme is
 #### General
 
 - Missing audio support must not affect gameplay. If the browser has no Web Audio support, the game runs silently.
+
+### 5.6 Interface Style
+
+The HUD, buttons and victory/defeat screens look like a stadium scoreboard. The style is purely visual: it does not change any gameplay rule.
+
+- Font: Orbitron, bundled with the game (no external font service), so it also works offline and inside embedding pages. It is loaded before the game starts; if it cannot load, the game starts with a system font.
+- Scoreboard cards are dark navy rounded panels with a thin border. Labels are muted; each value has an accent color: captured green, score gold, the others white.
+- The title reads "GOAL LOCK", with "LOCK" in gold.
+- Buttons are gold pills with a dark bold label and an icon where it helps (a circular arrow for restart). They lighten on hover, shrink slightly while pressed, and act on release. Each is at least 40 CSS pixels tall, so it is easy to tap.
+- On wide screens the title, cards and restart button share one bar above the arena. On narrower screens the cards wrap into centered rows below the title and button. In a side column the cards are stacked, with the label left and the value right.
+- The victory/defeat screen dims the arena and pops in a rounded panel: the result title (gold for victory, red for defeat), a one-line reason, a final scoreboard (score, time, captured) and a "Play again" button. It shrinks to fit small arenas.
+- Text and the elements it sits on keep a contrast ratio of at least 4.5:1.
 
 ## 6. Scoring
 
@@ -342,9 +353,9 @@ Responsible for:
 
 Responsible for:
 
-- Collision sound, miss whistle and goal sound (§5.5).
+- Collision sound, foul whistle and goal sound (§5.5).
 
-The physics system reports collisions, and the game logic reports misses and captures. Neither plays sounds itself.
+The physics system reports collisions, and the game logic reports fouls and captures. Neither plays sounds itself.
 
 ## 9. Acceptance Criteria
 
@@ -361,18 +372,19 @@ The initial implementation must satisfy the following scenarios:
 | Orb hits a wall during construction | Drawing is canceled |
 | Capture all orbs | Victory is triggered |
 | Exceed the failure limit | Defeat is triggered |
-| Click or tap the arena without moving the pointer | Nothing is drawn and no miss is counted |
+| Click or tap the arena without moving the pointer | Nothing is drawn and no foul is counted |
 | Attempt to draw outside the arena | Drawing is constrained to arena boundaries |
 | Restart the game | Initial game state is restored |
 | Resize the browser window | Arena adapts to the available viewport |
 | Change mobile device orientation | Arena adapts to the new dimensions |
 | Draw using touch input | Drawing works as expected |
 | Play on a mobile viewport | HUD and arena remain usable without horizontal scrolling |
+| View the HUD and the victory/defeat screen | Scoreboard cards and pill buttons in the Orbitron font; fouls shown as pips |
 | View the arena | Arena looks like a green soccer field; orbs look like soccer balls |
 | Watch a moving ball | It rolls in its direction of travel and leaves a fading motion-blur trail |
 | An orb bounces off an arena boundary, a wall or another orb | A soft kick sound plays |
 | Capture an orb | The captured region looks like a goal net with the ball trapped behind it |
-| A drawing is rejected or canceled (a miss) | A single referee whistle blow plays |
+| A drawing is rejected or canceled (a foul) | A single referee whistle blow plays |
 | Capture one or more orbs with a wall | A short goal sound (net swish and rising notes) plays once as the goal net appears |
 
 ## 10. Future Features
@@ -424,6 +436,7 @@ Clarifies §3.7: "If an active orb collides with a wall while it is being constr
 Resolves: whether invalid drawings consume lives.
 
 - Every rejected or canceled drawing counts as one failed attempt.
+- In the game, following the soccer theme (§5.4), a failed attempt is called a **foul**: the HUD counts fouls, and the referee blows the whistle for each one (§5.5). This is a name only; the rules below are unchanged.
 - A press released or canceled before its drawing started (a click or tap, §3.3) is not a drawing and does not count.
 - Once a drawing has started, it counts as usual, including when it is released shorter than the minimum drawing length.
 - Defeat is triggered when the number of failed attempts exceeds the configured `maxFailedAttempts` (§3.8).

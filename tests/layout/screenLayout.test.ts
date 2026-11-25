@@ -4,6 +4,7 @@ import type { Rect } from '../../src/geometry/rect';
 import { arenaToScreen, screenToArena } from '../../src/layout/arenaTransform';
 import {
   HUD_FIELD_COUNT,
+  MIN_TOUCH_TARGET,
   computeLayout,
   type ScreenLayout,
   type Viewport,
@@ -23,6 +24,16 @@ const VIEWPORTS: Record<string, Viewport> = {
 
 function overlaps(a: Rect, b: Rect): boolean {
   return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+}
+
+function contains(outer: Rect, inner: Rect): boolean {
+  const e = 1e-6;
+  return (
+    inner.x >= outer.x - e &&
+    inner.y >= outer.y - e &&
+    inner.x + inner.width <= outer.x + outer.width + e &&
+    inner.y + inner.height <= outer.y + outer.height + e
+  );
 }
 
 function inside(inner: Rect, layout: ScreenLayout): boolean {
@@ -55,13 +66,34 @@ describe('computeLayout — every viewport', () => {
       it('keeps the HUD inside the viewport and off the arena (§5.3)', () => {
         expect(inside(layout.hud.rect, layout)).toBe(true);
         expect(overlaps(layout.hud.rect, layout.arenaRect)).toBe(false);
-        expect(layout.hud.fields).toHaveLength(HUD_FIELD_COUNT);
-        for (const anchor of [layout.hud.title, layout.hud.restart, ...layout.hud.fields]) {
-          expect(anchor.x).toBeGreaterThanOrEqual(layout.hud.rect.x);
-          expect(anchor.x).toBeLessThanOrEqual(layout.hud.rect.x + layout.hud.rect.width);
-          expect(anchor.y).toBeGreaterThanOrEqual(layout.hud.rect.y);
-          expect(anchor.y).toBeLessThanOrEqual(layout.hud.rect.y + layout.hud.rect.height);
+        expect(layout.hud.cards).toHaveLength(HUD_FIELD_COUNT);
+        for (const rect of [layout.hud.restart, ...layout.hud.cards]) {
+          expect(contains(layout.hud.rect, rect)).toBe(true);
         }
+        const { title } = layout.hud;
+        expect(title.x).toBeGreaterThanOrEqual(layout.hud.rect.x);
+        expect(title.y).toBeGreaterThanOrEqual(layout.hud.rect.y);
+        expect(title.y).toBeLessThanOrEqual(layout.hud.rect.y + layout.hud.rect.height);
+      });
+
+      it('never overlaps two cards, or a card and the restart button (§5.6)', () => {
+        const rects = [layout.hud.restart, ...layout.hud.cards];
+        for (let i = 0; i < rects.length; i++) {
+          for (let j = i + 1; j < rects.length; j++) {
+            expect(overlaps(rects[i] as Rect, rects[j] as Rect)).toBe(false);
+          }
+        }
+      });
+
+      it('makes the restart button easy to tap (§7.3)', () => {
+        expect(layout.hud.restart.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET * viewport.pixelRatio);
+      });
+
+      it('keeps every font at a readable size', () => {
+        const r = viewport.pixelRatio;
+        expect(layout.hud.labelFontSize).toBeGreaterThanOrEqual(10 * r);
+        expect(layout.hud.valueFontSize).toBeGreaterThanOrEqual(14 * r);
+        expect(layout.hud.buttonFontSize).toBeGreaterThanOrEqual(12 * r);
       });
 
       it('maps arena corners onto the arena rectangle and back', () => {
@@ -93,12 +125,35 @@ describe('computeLayout — HUD placement', () => {
     expect(computeLayout(VIEWPORTS['very short window 900×200'] as Viewport, ARENA).hud.placement).toBe('top');
   });
 
-  it('wraps HUD fields into more rows on narrow screens', () => {
-    const wide = computeLayout(VIEWPORTS['desktop 1280×800'] as Viewport, ARENA).hud;
-    const narrow = computeLayout(VIEWPORTS['phone portrait 390×844'] as Viewport, ARENA).hud;
-    const rows = (fields: readonly { y: number }[]) => new Set(fields.map((f) => f.y)).size;
-    expect(rows(wide.fields)).toBe(1);
-    expect(rows(narrow.fields)).toBeGreaterThan(1);
+  it('puts the title, all cards and the button in one bar on desktop', () => {
+    const hud = computeLayout(VIEWPORTS['desktop 1280×800'] as Viewport, ARENA).hud;
+    const centers = [hud.title.y, hud.restart.y + hud.restart.height / 2, ...hud.cards.map((c) => c.y + c.height / 2)];
+    for (const y of centers) expect(y).toBeCloseTo(centers[0] ?? Number.NaN, 9);
+    expect(hud.cardStyle).toBe('stacked');
+  });
+
+  it('wraps the cards into rows below a header on narrow screens, centering the last row', () => {
+    const layout = computeLayout(VIEWPORTS['phone portrait 390×844'] as Viewport, ARENA);
+    const rows = new Map<number, Rect[]>();
+    for (const card of layout.hud.cards) rows.set(card.y, [...(rows.get(card.y) ?? []), card]);
+    expect(rows.size).toBeGreaterThan(1);
+    // Every card sits below the button.
+    for (const card of layout.hud.cards) {
+      expect(card.y).toBeGreaterThanOrEqual(layout.hud.restart.y + layout.hud.restart.height);
+    }
+    // Each row is centered in the HUD.
+    for (const row of rows.values()) {
+      const left = Math.min(...row.map((c) => c.x));
+      const right = Math.max(...row.map((c) => c.x + c.width));
+      expect(left - layout.hud.rect.x).toBeCloseTo(layout.hud.rect.x + layout.hud.rect.width - right, 6);
+    }
+  });
+
+  it('stacks inline cards of equal width in the side column', () => {
+    const hud = computeLayout(VIEWPORTS['phone landscape 844×390'] as Viewport, ARENA).hud;
+    expect(hud.cardStyle).toBe('inline');
+    expect(new Set(hud.cards.map((c) => c.width)).size).toBe(1);
+    expect(new Set(hud.cards.map((c) => c.x)).size).toBe(1);
   });
 
   it('switches placement when a phone is rotated, keeping the arena proportions', () => {
@@ -116,8 +171,9 @@ describe('computeLayout — pixel density', () => {
     const at2 = computeLayout({ width: 844, height: 390, pixelRatio: 2 }, ARENA);
     expect(at2.arena.scale).toBeCloseTo(at1.arena.scale * 2, 9);
     expect(at2.arena.offsetX).toBeCloseTo(at1.arena.offsetX * 2, 9);
-    expect(at2.hud.fieldFontSize).toBe(at1.hud.fieldFontSize * 2);
+    expect(at2.hud.valueFontSize).toBe(at1.hud.valueFontSize * 2);
     expect(at2.hud.restart.x).toBeCloseTo(at1.hud.restart.x * 2, 9);
+    expect(at2.hud.cards[2]?.width).toBeCloseTo((at1.hud.cards[2]?.width ?? 0) * 2, 9);
   });
 
   it('maps the same CSS position to the same arena point at any pixel ratio', () => {

@@ -8,6 +8,7 @@ import { createSeededRandom } from './physics/random';
 import { createOrbs } from './physics/spawn';
 import { GameScene } from './scenes/GameScene';
 import { installTestHook } from './testHook';
+import { loadUiFonts } from './ui/fonts';
 import { GameWorld } from './world/gameWorld';
 
 // Development builds accept URL overrides (e.g. `?orbs=1&speed=20&seed=7`) for balancing and tests.
@@ -24,6 +25,9 @@ const world = new GameWorld({
 
 const container = document.getElementById('game');
 if (container === null) throw new Error('#game element missing');
+
+// Canvas text is measured when created, so the UI font must be ready first (falls back to system fonts).
+await loadUiFonts();
 
 const viewport = readViewport(container);
 const scene = new GameScene(world, computeLayout(viewport, ARENA));

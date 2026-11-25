@@ -19,8 +19,12 @@ export const THEME = {
   previewWidth: 2,
   failure: 0xff4d5e,
   failureWidth: 4,
-  /** Captured regions are drawn as a goal net over a shadowed backdrop (REQUIREMENTS §5.4). */
-  netBackdrop: 0x1c3320,
+  /**
+   * Captured regions are drawn as a goal net over a shadowed backdrop
+   * (REQUIREMENTS §5.4): a medium-dark green, darker than the field stripes
+   * but not near-black.
+   */
+  netBackdrop: 0x2a5a2f,
   netCord: 0xf4f6f2,
   netCordAlpha: 0.7,
   netCordWidth: 1.25,
@@ -35,13 +39,36 @@ export const THEME = {
   ballTrail: 0xdde1e6,
   /** Tint that dims captured balls. */
   orbCaptured: 0x7a8499,
+  /**
+   * Interface (REQUIREMENTS §5.3, §5.6): a stadium-scoreboard look. Text
+   * colors are CSS strings for Phaser Text; fills are 0xRRGGBB.
+   */
   text: '#e6ecff',
-  textMuted: '#9aa6c4',
-  button: '#ffd166',
-  buttonHover: '#ffe39f',
+  textMuted: '#8fa0c8',
+  /** Scoreboard cards: dark navy panels with a thin border. */
+  cardFill: 0x111a2e,
+  cardFillAlpha: 0.92,
+  cardBorder: 0x2c3d63,
+  /** Accent color of each card's value. */
+  accentCaptured: '#7ee08a',
+  accentScore: '#ffd166',
+  accentNeutral: '#f2f5ff',
+  /** Foul pips: used fouls are filled; the card glows red when the next foul loses. */
+  foulUsed: 0xff5d6c,
+  foulFree: 0x5a6d99,
+  danger: 0xff5d6c,
+  dangerText: '#ff5d6c',
+  /** Primary (pill) buttons. */
+  buttonFill: 0xffd166,
+  buttonFillHover: 0xffe39f,
+  buttonText: '#1a1405',
+  buttonShadow: 0x000000,
+  victory: '#ffd166',
+  defeat: '#ff5d6c',
   overlay: 0x05070d,
-  overlayAlpha: 0.85,
-  fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+  overlayAlpha: 0.7,
+  /** The bundled Orbitron UI font, with system fonts as fallback. */
+  fontFamily: 'Orbitron, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
 } as const;
 
 /** Multiplies two 0xRRGGBB colors channel by channel, like a tint. */

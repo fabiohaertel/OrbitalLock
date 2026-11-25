@@ -3,7 +3,7 @@ import { GOAL_SOUND_VOLUME, synthesizeGoal } from '../audio/goalSound';
 import { COLLISION_SOUND_VOLUME, synthesizeKick } from '../audio/kickSound';
 import { soundCuesFor } from '../audio/soundCues';
 import { SoundEffect } from '../audio/soundEffect';
-import { MISS_WHISTLE_VOLUME, synthesizeWhistle } from '../audio/whistleSound';
+import { FOUL_WHISTLE_VOLUME, synthesizeWhistle } from '../audio/whistleSound';
 import type { PointerInput } from '../drawing/drawingSession';
 import type { Vec2 } from '../geometry/vector';
 import { screenToArena } from '../layout/arenaTransform';
@@ -20,7 +20,7 @@ export const GAME_SCENE_KEY = 'GameScene';
 /**
  * Glue between Phaser and the game: forwards pointer input and frame time to
  * the `GameWorld`, redraws the world, HUD and game-over screen each frame, and
- * plays the collision, miss and capture sounds. Holds no game rules of its own.
+ * plays the collision, foul and capture sounds. Holds no game rules of its own.
  */
 export class GameScene extends Phaser.Scene {
   private readonly world: GameWorld;
@@ -31,7 +31,7 @@ export class GameScene extends Phaser.Scene {
   private hud!: Hud;
   private overlay!: GameOverOverlay;
   private collisionSound!: SoundEffect;
-  private missWhistle!: SoundEffect;
+  private foulWhistle!: SoundEffect;
   private goalSound!: SoundEffect;
 
   constructor(world: GameWorld, layout: ScreenLayout) {
@@ -55,7 +55,7 @@ export class GameScene extends Phaser.Scene {
     if (!this.created) return;
     this.cameras.main.setSize(layout.canvasWidth, layout.canvasHeight);
     this.worldRenderer.setTransform(layout.arena, layout.pixelRatio);
-    this.hud.applyLayout(layout.hud);
+    this.hud.applyLayout(layout.hud, layout.pixelRatio);
     this.overlay.applyLayout(layout.arenaRect, layout.pixelRatio);
     this.redraw();
   }
@@ -69,20 +69,20 @@ export class GameScene extends Phaser.Scene {
       volume: COLLISION_SOUND_VOLUME,
       skipWhileLocked: true,
     });
-    this.missWhistle = new SoundEffect(this, {
-      key: 'miss-whistle',
+    this.foulWhistle = new SoundEffect(this, {
+      key: 'foul-whistle',
       synthesize: (rate) => synthesizeWhistle(rate),
-      volume: MISS_WHISTLE_VOLUME,
+      volume: FOUL_WHISTLE_VOLUME,
       skipWhileLocked: false,
     });
     this.goalSound = new SoundEffect(this, {
       key: 'capture-goal',
       synthesize: (rate) => synthesizeGoal(rate),
       volume: GOAL_SOUND_VOLUME,
-      // A capture answers the player's input, like a miss.
+      // A capture answers the player's input, like a foul.
       skipWhileLocked: false,
     });
-    this.hud = new Hud(this, hud, () => {
+    this.hud = new Hud(this, hud, pixelRatio, () => {
       this.restart();
     });
     this.overlay = new GameOverOverlay(this, arenaRect, pixelRatio, () => {
@@ -124,9 +124,9 @@ export class GameScene extends Phaser.Scene {
     return this.collisionSound.playedCount;
   }
 
-  /** Number of miss whistles played so far, for tests. */
-  get missWhistlesPlayed(): number {
-    return this.missWhistle.playedCount;
+  /** Number of foul whistles played so far, for tests. */
+  get foulWhistlesPlayed(): number {
+    return this.foulWhistle.playedCount;
   }
 
   /** Each ball's rolling orientation (row-major matrix) and number of trail ghosts, for tests. */
@@ -147,11 +147,16 @@ export class GameScene extends Phaser.Scene {
     return { visible: this.overlay.visible, title: this.overlay.titleText };
   }
 
+  /** Right edge of the HUD title in canvas pixels, for tests. */
+  get hudTitleRight(): number {
+    return this.hud.titleRight;
+  }
+
   /** Canvas-space centers of the HUD restart and overlay buttons, for tests. */
   get buttonCenters(): { readonly restart: Vec2; readonly playAgain: Vec2 } {
     return {
-      restart: { x: this.hud.restartButton.x, y: this.hud.restartButton.y },
-      playAgain: { x: this.overlay.playAgainButton.x, y: this.overlay.playAgainButton.y },
+      restart: this.hud.restartCenter,
+      playAgain: this.overlay.playAgainCenter,
     };
   }
 
@@ -163,7 +168,7 @@ export class GameScene extends Phaser.Scene {
 
   /**
    * Runs a world call and gives feedback for what it reports: the failure
-   * flash and the referee's whistle for a miss (a failed drawing), the kick
+   * flash and the referee's whistle for a foul (a failed drawing), the kick
    * sound for collisions, and the goal sound for a capture. Collisions
    * reported by one call (one frame) share one sound (REQUIREMENTS §5.5).
    */
@@ -176,7 +181,7 @@ export class GameScene extends Phaser.Scene {
       }
     }
     const cues = soundCuesFor(events);
-    for (let i = 0; i < cues.whistles; i++) this.missWhistle.play();
+    for (let i = 0; i < cues.whistles; i++) this.foulWhistle.play();
     if (cues.kick) this.collisionSound.play();
     if (cues.goal) this.goalSound.play();
   }
@@ -199,7 +204,7 @@ export class GameScene extends Phaser.Scene {
       failurePath: this.flash.path,
       failureAlpha: this.flash.alpha,
     });
-    this.hud.update(buildHudModel(this.world.progress, this.world.config));
+    this.hud.update(buildHudModel(this.world.progress, this.world.config), this.time.now);
     this.overlay.update(buildGameOverModel(this.world.progress));
   }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MISS_WHISTLE_VOLUME, REFEREE_WHISTLE, synthesizeWhistle } from '../../src/audio/whistleSound';
+import { FOUL_WHISTLE_VOLUME, REFEREE_WHISTLE, synthesizeWhistle } from '../../src/audio/whistleSound';
 
 const RATE = 44_100;
 
@@ -74,7 +74,7 @@ describe('synthesizeWhistle (REQUIREMENTS §5.5)', () => {
   });
 
   it('is played at a moderate volume', () => {
-    expect(MISS_WHISTLE_VOLUME).toBeGreaterThan(0);
-    expect(MISS_WHISTLE_VOLUME).toBeLessThanOrEqual(0.5);
+    expect(FOUL_WHISTLE_VOLUME).toBeGreaterThan(0);
+    expect(FOUL_WHISTLE_VOLUME).toBeLessThanOrEqual(0.5);
   });
 });

@@ -9,12 +9,12 @@ interface Snapshot {
 
 async function open(page: Page, query = ''): Promise<void> {
   await page.goto(`/${query}`);
-  await page.waitForFunction(() => window.__orbitalLock?.scene.sys.isActive() === true);
+  await page.waitForFunction(() => window.__goalLock?.scene.sys.isActive() === true);
 }
 
 async function snapshot(page: Page): Promise<Snapshot> {
   return page.evaluate(() => {
-    const hook = window.__orbitalLock;
+    const hook = window.__goalLock;
     if (hook === undefined) throw new Error('test hook missing');
     return {
       status: hook.world.status,
@@ -33,7 +33,7 @@ async function snapshot(page: Page): Promise<Snapshot> {
 /** Page coordinates of a game-canvas point. */
 async function canvasToPage(page: Page, x: number, y: number): Promise<{ x: number; y: number }> {
   return page.evaluate(([cx, cy]) => {
-    const hook = window.__orbitalLock;
+    const hook = window.__goalLock;
     if (hook === undefined) throw new Error('test hook missing');
     return hook.canvasToPage({ x: cx, y: cy });
   }, [x, y] as const);
@@ -42,7 +42,7 @@ async function canvasToPage(page: Page, x: number, y: number): Promise<{ x: numb
 /** Arena coordinates → page coordinates (the arena sits below the HUD). */
 async function arenaToPage(page: Page, x: number, y: number): Promise<{ x: number; y: number }> {
   return page.evaluate(([ax, ay]) => {
-    const hook = window.__orbitalLock;
+    const hook = window.__goalLock;
     if (hook === undefined) throw new Error('test hook missing');
     return hook.arenaToPage({ x: ax, y: ay });
   }, [x, y] as const);
@@ -50,7 +50,7 @@ async function arenaToPage(page: Page, x: number, y: number): Promise<{ x: numbe
 
 async function clickButton(page: Page, which: 'restart' | 'playAgain'): Promise<void> {
   const center = await page.evaluate((name) => {
-    const hook = window.__orbitalLock;
+    const hook = window.__goalLock;
     if (hook === undefined) throw new Error('test hook missing');
     return hook.scene.buttonCenters[name];
   }, which);
@@ -58,13 +58,13 @@ async function clickButton(page: Page, which: 'restart' | 'playAgain'): Promise<
   await page.mouse.click(point.x, point.y);
 }
 
-/** Clicks inside the arena without moving: no drawing starts, so it is not a miss (REQUIREMENTS §3.3). */
+/** Clicks inside the arena without moving: no drawing starts, so it is not a foul (REQUIREMENTS §3.3). */
 async function tapArena(page: Page): Promise<void> {
   const point = await arenaToPage(page, 40, 40);
   await page.mouse.click(point.x, point.y);
 }
 
-/** Starts a drawing and releases it after 20 units: too short, so it counts as a miss (D3). */
+/** Starts a drawing and releases it after 20 units: too short, so it counts as a foul (D3). */
 async function shortStroke(page: Page): Promise<void> {
   const start = await arenaToPage(page, 40, 40);
   const end = await arenaToPage(page, 60, 40);
@@ -98,34 +98,63 @@ test('HUD shows the counters, time and score', async ({ page }) => {
   await open(page);
   const initial = await snapshot(page);
   expect(initial.hud).toEqual({
-    captured: 'Captured: 0 / 6',
-    remaining: 'Remaining: 6',
+    captured: 'Captured: 0 / 7',
+    remaining: 'Remaining: 7',
     time: initial.hud.time,
     score: 'Score: 0',
-    misses: 'Misses: 0 / 3',
+    fouls: 'Fouls: 0 / 3',
   });
-  // Game time runs in fixed steps and can lag wall-clock time on a busy machine.
-  await expect.poll(async () => (await snapshot(page)).hud.time, { timeout: 15_000 }).toBe('Time: 00:02');
+  // Game time runs in fixed steps and can lag wall-clock time on a busy machine. Polls can
+  // also be late, so wait for the clock to reach 2 s rather than to show exactly 00:02.
+  const seconds = (time = '') => {
+    const [, minutes = '0', rest = '0'] = /(\d+):(\d+)$/.exec(time) ?? [];
+    return Number(minutes) * 60 + Number(rest);
+  };
+  await expect
+    .poll(async () => seconds((await snapshot(page)).hud.time), { timeout: 15_000 })
+    .toBeGreaterThanOrEqual(2);
+  expect((await snapshot(page)).hud.time).toMatch(/^Time: \d{2}:\d{2}$/);
+});
+
+test('the HUD uses the bundled Orbitron font, and the title fits next to the cards', async ({ page }) => {
+  // 16:10, where the HUD sits in one bar on top (at 16:9 the side column leaves a larger arena).
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await open(page);
+  const info = await page.evaluate(() => {
+    const scene = window.__goalLock?.scene;
+    if (scene === undefined) throw new Error('test hook missing');
+    return {
+      bold: document.fonts.check('800 16px Orbitron'),
+      medium: document.fonts.check('500 16px Orbitron'),
+      titleRight: scene.hudTitleRight,
+      firstCardLeft: scene.currentLayout.hud.cards[0]?.x ?? 0,
+      placement: scene.currentLayout.hud.placement,
+    };
+  });
+  expect(info.bold).toBe(true);
+  expect(info.medium).toBe(true);
+  expect(info.placement).toBe('top');
+  expect(info.titleRight).toBeLessThan(info.firstCardLeft);
 });
 
 test('a failed drawing is counted in the HUD', async ({ page }) => {
   await open(page, '?seed=3');
   await shortStroke(page);
-  await expect.poll(async () => (await snapshot(page)).hud.misses).toBe('Misses: 1 / 3');
+  await expect.poll(async () => (await snapshot(page)).hud.fouls).toBe('Fouls: 1 / 3');
 });
 
-test('clicking the arena without drawing is not a miss', async ({ page }) => {
-  await open(page, '?maxMisses=0&seed=3');
+test('clicking the arena without drawing is not a foul', async ({ page }) => {
+  await open(page, '?maxFouls=0&seed=3');
   await tapArena(page);
   await tapArena(page);
   const after = await snapshot(page);
-  expect(after.hud.misses).toBe('Misses: 0 / 0');
+  expect(after.hud.fouls).toBe('Fouls: 0 / 0');
   expect(after.status).toBe('playing');
-  expect(await page.evaluate(() => window.__orbitalLock?.scene.missWhistlesPlayed)).toBe(0);
+  expect(await page.evaluate(() => window.__goalLock?.scene.foulWhistlesPlayed)).toBe(0);
 });
 
 test('exceeding the failure limit shows the defeat screen, and restart restores the game', async ({ page }) => {
-  await open(page, '?maxMisses=1&seed=3');
+  await open(page, '?maxFouls=1&seed=3');
   await shortStroke(page);
   await shortStroke(page);
 
@@ -136,7 +165,7 @@ test('exceeding the failure limit shows the defeat screen, and restart restores 
   const after = await snapshot(page);
   expect(after.status).toBe('playing');
   expect(after.overlay.visible).toBe(false);
-  expect(after.hud.misses).toBe('Misses: 0 / 1');
+  expect(after.hud.fouls).toBe('Fouls: 0 / 1');
   expect(after.hud.time).toBe('Time: 00:00');
 });
 
@@ -155,9 +184,9 @@ test('capturing every orb shows the victory screen, and "Play again" restarts', 
   expect(won.hud.score).toBe('Score: 100');
   expect(won.orbs[0]?.capture).toBe('captured');
   // A captured ball no longer moves, so it has no motion-blur trail (REQUIREMENTS §5.4).
-  expect(await page.evaluate(() => window.__orbitalLock?.scene.ballVisuals[0]?.trailGhosts)).toBe(0);
+  expect(await page.evaluate(() => window.__goalLock?.scene.ballVisuals[0]?.trailGhosts)).toBe(0);
   // The capture that won the game played the goal sound once (REQUIREMENTS §5.5).
-  expect(await page.evaluate(() => window.__orbitalLock?.scene.goalSoundsPlayed)).toBe(1);
+  expect(await page.evaluate(() => window.__goalLock?.scene.goalSoundsPlayed)).toBe(1);
 
   await clickButton(page, 'playAgain');
   const after = await snapshot(page);
@@ -180,12 +209,12 @@ test('Capture an orb → the captured region looks like a goal net with the ball
   await expect.poll(async () => (await snapshot(page)).orbs[0]?.capture).toBe('captured');
   expect((await snapshot(page)).status).toBe('playing');
   // A capture that does not win the game still plays the goal sound once (REQUIREMENTS §5.5).
-  expect(await page.evaluate(() => window.__orbitalLock?.scene.goalSoundsPlayed)).toBe(1);
+  expect(await page.evaluate(() => window.__goalLock?.scene.goalSoundsPlayed)).toBe(1);
 
   // Sample a row of canvas pixels across the captured region, below the ball.
   const pixels = await page.evaluate(
     async ([x, y, halfSize]) => {
-      const hook = window.__orbitalLock;
+      const hook = window.__goalLock;
       if (hook === undefined) throw new Error('test hook missing');
       const scene = hook.scene;
       const arena = scene.currentLayout.arena;
@@ -208,8 +237,9 @@ test('Capture an orb → the captured region looks like a goal net with the ball
     },
     [orb.x, orb.y, half] as const,
   );
-  // A dark, shadowed backdrop (much darker than the field stripes) crossed by light net cords.
-  const backdrop = pixels.filter((sum) => sum < 160).length;
+  // A shadowed backdrop (darker than the field stripes, whose channel sums are 233 and above)
+  // crossed by light net cords.
+  const backdrop = pixels.filter((sum) => sum > 120 && sum < 210).length;
   const cords = pixels.filter((sum) => sum > 400).length;
   expect(backdrop).toBeGreaterThan(pixels.length / 3);
   expect(cords).toBeGreaterThanOrEqual(4);
@@ -232,20 +262,20 @@ test('a right click while drawing does not end the drawing', async ({ page }) =>
   await page.mouse.move(middle.x, middle.y, { steps: 10 });
   await page.mouse.down({ button: 'right' });
   await page.mouse.up({ button: 'right' });
-  expect(await page.evaluate(() => window.__orbitalLock?.world.isDrawing)).toBe(true);
+  expect(await page.evaluate(() => window.__goalLock?.world.isDrawing)).toBe(true);
   await page.mouse.move(end.x, end.y, { steps: 10 });
   await page.mouse.up();
 
-  const walls = await page.evaluate(() => window.__orbitalLock?.world.walls.map((wall) => wall.path.at(-1)?.x) ?? []);
+  const walls = await page.evaluate(() => window.__goalLock?.world.walls.map((wall) => wall.path.at(-1)?.x) ?? []);
   expect(walls).toHaveLength(1);
   expect(walls[0]).toBeGreaterThan(790);
-  expect((await snapshot(page)).hud.misses).toBe('Misses: 0 / 3');
+  expect((await snapshot(page)).hud.fouls).toBe('Fouls: 0 / 3');
 });
 
 test('the arena is a green soccer field and orbs are drawn as soccer balls', async ({ page }) => {
   await open(page, '?orbs=2&speed=1&seed=3');
   const result = await page.evaluate(async () => {
-    const hook = window.__orbitalLock;
+    const hook = window.__goalLock;
     if (hook === undefined) throw new Error('test hook missing');
     const scene = hook.scene;
     const shadings = scene.children.list
@@ -298,7 +328,7 @@ test('the arena is a green soccer field and orbs are drawn as soccer balls', asy
 
 test('moving balls roll and leave a motion-blur trail', async ({ page }) => {
   await open(page, '?orbs=2&speed=200&seed=3');
-  const visuals = () => page.evaluate(() => window.__orbitalLock?.scene.ballVisuals ?? []);
+  const visuals = () => page.evaluate(() => window.__goalLock?.scene.ballVisuals ?? []);
   const first = await visuals();
   await expect
     .poll(async () => (await visuals()).every((ball) => ball.trailGhosts > 0), { timeout: 15_000 })
@@ -312,26 +342,26 @@ test('moving balls roll and leave a motion-blur trail', async ({ page }) => {
 
 test('orb collisions play the kick sound once the player has interacted', async ({ page }) => {
   await open(page, '?orbs=6&speed=400&seed=3');
-  // Browsers block audio until the first interaction; a click unlocks it (and is not a miss).
+  // Browsers block audio until the first interaction; a click unlocks it (and is not a foul).
   await tapArena(page);
   await expect
-    .poll(() => page.evaluate(() => window.__orbitalLock?.scene.collisionSoundsPlayed ?? 0), { timeout: 15_000 })
+    .poll(() => page.evaluate(() => window.__goalLock?.scene.collisionSoundsPlayed ?? 0), { timeout: 15_000 })
     .toBeGreaterThan(0);
 });
 
-test('every miss plays one referee whistle, starting with the very first interaction', async ({ page }) => {
+test('every foul plays one referee whistle, starting with the very first interaction', async ({ page }) => {
   await open(page, '?seed=3');
-  const whistles = () => page.evaluate(() => window.__orbitalLock?.scene.missWhistlesPlayed ?? 0);
+  const whistles = () => page.evaluate(() => window.__goalLock?.scene.foulWhistlesPlayed ?? 0);
   expect(await whistles()).toBe(0);
 
-  // The very first interaction on the page is itself a miss (a too-short drawing).
+  // The very first interaction on the page is itself a foul (a too-short drawing).
   await shortStroke(page);
-  expect((await snapshot(page)).hud.misses).toBe('Misses: 1 / 3');
+  expect((await snapshot(page)).hud.fouls).toBe('Fouls: 1 / 3');
   expect(await whistles()).toBe(1);
 
   await shortStroke(page);
-  expect((await snapshot(page)).hud.misses).toBe('Misses: 2 / 3');
+  expect((await snapshot(page)).hud.fouls).toBe('Fouls: 2 / 3');
   expect(await whistles()).toBe(2);
-  // A miss is not a capture: no goal sound.
-  expect(await page.evaluate(() => window.__orbitalLock?.scene.goalSoundsPlayed)).toBe(0);
+  // A foul is not a capture: no goal sound.
+  expect(await page.evaluate(() => window.__goalLock?.scene.goalSoundsPlayed)).toBe(0);
 });

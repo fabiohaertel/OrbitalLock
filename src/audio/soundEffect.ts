@@ -11,7 +11,7 @@ export interface SoundEffectOptions {
    * Skip playback while the browser still blocks audio. Use it for sounds the
    * game makes on its own (collisions): queued, they would all play late and at
    * once when the player first interacts. Leave it off for sounds that answer
-   * the player's input (misses): the input itself unlocks audio, and Phaser only
+   * the player's input (fouls): the input itself unlocks audio, and Phaser only
    * notices that a frame later, so skipping would drop the first one.
    */
   readonly skipWhileLocked: boolean;

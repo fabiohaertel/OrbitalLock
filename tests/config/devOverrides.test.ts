@@ -9,7 +9,7 @@ describe('parseDevOverrides', () => {
 
   it('maps every supported parameter onto the gameplay config', () => {
     expect(
-      parseDevOverrides('?orbs=2&radius=8&speed=30&maxArea=0.2&minLength=10&maxMisses=0&seed=7'),
+      parseDevOverrides('?orbs=2&radius=8&speed=30&maxArea=0.2&minLength=10&maxFouls=0&seed=7'),
     ).toEqual({
       config: {
         initialOrbCount: 2,

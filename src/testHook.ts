@@ -4,7 +4,7 @@ import type { GameScene } from './scenes/GameScene';
 import type { GameWorld } from './world/gameWorld';
 
 /** View of the running game for browser tests (development builds only). */
-export interface OrbitalLockTestHook {
+export interface GoalLockTestHook {
   readonly world: GameWorld;
   readonly scene: GameScene;
   /** Converts a game-canvas position into page (CSS pixel) coordinates for mouse/touch events. */
@@ -15,7 +15,7 @@ export interface OrbitalLockTestHook {
 
 declare global {
   interface Window {
-    __orbitalLock?: OrbitalLockTestHook;
+    __goalLock?: GoalLockTestHook;
   }
 }
 
@@ -31,7 +31,7 @@ export function installTestHook(world: GameWorld, scene: GameScene): void {
     };
   };
 
-  window.__orbitalLock = {
+  window.__goalLock = {
     world,
     scene,
     canvasToPage,

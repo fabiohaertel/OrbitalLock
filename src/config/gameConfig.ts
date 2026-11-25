@@ -40,9 +40,9 @@ export interface GameplayConfig {
  * requirements; the other values are provisional prototype values.
  */
 export const DEFAULT_GAMEPLAY_CONFIG: GameplayConfig = Object.freeze({
-  initialOrbCount: 6,
+  initialOrbCount: 7,
   orbRadius: 12,
-  orbSpeed: 160,
+  orbSpeed: 250,
   maxCaptureAreaRatio: 0.15,
   minDrawingLength: 40,
   maxFailedAttempts: 3,

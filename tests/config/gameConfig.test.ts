@@ -13,6 +13,14 @@ describe('DEFAULT_GAMEPLAY_CONFIG', () => {
     expect(DEFAULT_GAMEPLAY_CONFIG.maxCaptureAreaRatio).toBe(0.15);
   });
 
+  it('starts with 7 orbs (REQUIREMENTS §4)', () => {
+    expect(DEFAULT_GAMEPLAY_CONFIG.initialOrbCount).toBe(7);
+  });
+
+  it('moves orbs at 250 units per second (REQUIREMENTS §4)', () => {
+    expect(DEFAULT_GAMEPLAY_CONFIG.orbSpeed).toBe(250);
+  });
+
   it('is valid', () => {
     expect(validateGameplayConfig(DEFAULT_GAMEPLAY_CONFIG)).toEqual([]);
   });
@@ -43,7 +51,7 @@ describe('createGameplayConfig', () => {
   it('returns a frozen config and does not mutate the defaults', () => {
     const config = createGameplayConfig({ initialOrbCount: 2 });
     expect(Object.isFrozen(config)).toBe(true);
-    expect(DEFAULT_GAMEPLAY_CONFIG.initialOrbCount).toBe(6);
+    expect(DEFAULT_GAMEPLAY_CONFIG.initialOrbCount).toBe(7);
   });
 
   it('accepts boundary values', () => {

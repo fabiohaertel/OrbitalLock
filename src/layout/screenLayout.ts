@@ -15,21 +15,31 @@ export interface Viewport {
 /** Where the HUD sits relative to the arena (REQUIREMENTS §11.1, D6). */
 export type HudPlacement = 'top' | 'side';
 
-/** Number of HUD fields (captured, remaining, time, score, misses). */
+/** Number of HUD fields (captured, remaining, time, score, fouls). */
 export const HUD_FIELD_COUNT = 5;
+
+/**
+ * How a scoreboard card arranges its label and value: label above a large
+ * value in the top bar, label and value side by side in the narrow side column.
+ */
+export type HudCardStyle = 'stacked' | 'inline';
 
 export interface HudLayout {
   readonly placement: HudPlacement;
   readonly rect: Rect;
   /** Left-middle anchor of the title. */
   readonly title: Vec2;
-  /** Left-middle anchor of each HUD field, in display order. */
-  readonly fields: readonly Vec2[];
-  /** Center of the restart button. */
-  readonly restart: Vec2;
+  /** One scoreboard card per HUD field, in display order. Cards never overlap. */
+  readonly cards: readonly Rect[];
+  readonly cardStyle: HudCardStyle;
+  /** Restart button (a pill), at least `MIN_TOUCH_TARGET` CSS pixels tall. */
+  readonly restart: Rect;
   readonly titleFontSize: number;
-  readonly fieldFontSize: number;
+  readonly labelFontSize: number;
+  readonly valueFontSize: number;
   readonly buttonFontSize: number;
+  /** Corner radius of the cards. */
+  readonly cornerRadius: number;
 }
 
 /** Full screen layout. All coordinates and sizes are in canvas pixels. */
@@ -44,25 +54,41 @@ export interface ScreenLayout {
   readonly arenaRect: Rect;
 }
 
-// Layout metrics in CSS pixels, so the HUD stays readable at any pixel density.
+/** Smallest height of a button, in CSS pixels, so it is easy to tap (REQUIREMENTS §5.6, §7.3). */
+export const MIN_TOUCH_TARGET = 40;
+
+// Layout metrics in CSS pixels, on an 8-pixel grid, so the HUD stays readable at any pixel density.
 const PADDING = 8;
-const TOP_HEADER_HEIGHT = 40;
-const FIELD_ROW_HEIGHT = 24;
-const FIELD_COLUMN_WIDTH = 132;
-const SIDE_WIDTH = 176;
-const SIDE_FIELDS_TOP = 64;
-const SIDE_MIN_HEIGHT = SIDE_FIELDS_TOP + HUD_FIELD_COUNT * FIELD_ROW_HEIGHT + 56;
-const RESTART_HALF_WIDTH = 46;
-const TITLE_FONT = 18;
-const FIELD_FONT = 15;
-const BUTTON_FONT = 18;
+const GAP = 8;
+/** Room reserved for the title in the top bar. */
+const TITLE_WIDTH = 208;
+const CARD_HEIGHT = 48;
+const CARD_MIN_WIDTH = 96;
+const CARD_MAX_WIDTH = 136;
+const BUTTON_WIDTH = 128;
+const BUTTON_HEIGHT = MIN_TOUCH_TARGET;
+/** Header row above the cards when they do not fit next to the title. */
+const HEADER_HEIGHT = PADDING + BUTTON_HEIGHT;
+const SIDE_WIDTH = 184;
+const SIDE_TITLE_HEIGHT = 32;
+const SIDE_CARD_HEIGHT = 34;
+const SIDE_CARD_GAP = 6;
+const SIDE_CARDS_HEIGHT = HUD_FIELD_COUNT * SIDE_CARD_HEIGHT + (HUD_FIELD_COUNT - 1) * SIDE_CARD_GAP;
+const SIDE_MIN_HEIGHT = PADDING + SIDE_TITLE_HEIGHT + GAP + SIDE_CARDS_HEIGHT + GAP + BUTTON_HEIGHT + PADDING;
+const CORNER_RADIUS = 8;
+/** Narrowest viewport where the title, all cards and the button fit in one bar. */
+const SINGLE_ROW_MIN_WIDTH =
+  PADDING + TITLE_WIDTH + GAP + HUD_FIELD_COUNT * CARD_MIN_WIDTH + (HUD_FIELD_COUNT + 1) * GAP + BUTTON_WIDTH + PADDING;
 
 /**
- * Lays out the HUD and the arena for a viewport (REQUIREMENTS §5.1, §7.2):
+ * Lays out the HUD and the arena for a viewport (REQUIREMENTS §5.1, §5.3, §7.2):
  *
  * - The arena keeps its aspect ratio and is scaled as large as possible.
  * - The HUD goes on top, or in a side column when that leaves a larger arena
  *   (typically landscape phones). It never overlaps the arena.
+ * - On top, the title, the five scoreboard cards and the restart button share
+ *   one bar when they fit. Otherwise a header holds the title and the button,
+ *   and the cards wrap into rows below it.
  * - Everything fits inside the viewport, so there is no scrolling.
  */
 export function computeLayout(viewport: Viewport, arena: ArenaDimensions): ScreenLayout {
@@ -74,25 +100,52 @@ export function computeLayout(viewport: Viewport, arena: ArenaDimensions): Scree
 
 function topLayout(viewport: Viewport, arena: ArenaDimensions): ScreenLayout {
   const r = viewport.pixelRatio;
-  const columns = Math.max(1, Math.floor((viewport.width - 2 * PADDING) / FIELD_COLUMN_WIDTH));
-  const rows = Math.ceil(HUD_FIELD_COUNT / columns);
-  const hudHeight = TOP_HEADER_HEIGHT + rows * FIELD_ROW_HEIGHT + PADDING;
+  const width = viewport.width;
 
-  const fields: Vec2[] = [];
-  for (let i = 0; i < HUD_FIELD_COUNT; i++) {
-    fields.push({
-      x: (PADDING + (i % columns) * FIELD_COLUMN_WIDTH) * r,
-      y: (TOP_HEADER_HEIGHT + Math.floor(i / columns) * FIELD_ROW_HEIGHT + FIELD_ROW_HEIGHT / 2) * r,
-    });
+  let cards: Rect[];
+  let hudHeight: number;
+  let barCenterY: number;
+  if (width >= SINGLE_ROW_MIN_WIDTH) {
+    // One bar: title | cards, centered in the space between | button.
+    const left = PADDING + TITLE_WIDTH + GAP;
+    const right = width - PADDING - BUTTON_WIDTH - GAP;
+    cards = cardRow(left, right, PADDING, HUD_FIELD_COUNT, CARD_MAX_WIDTH);
+    hudHeight = PADDING + CARD_HEIGHT + PADDING;
+    barCenterY = PADDING + CARD_HEIGHT / 2;
+  } else {
+    const fit = Math.floor((width - 2 * PADDING + GAP) / (CARD_MIN_WIDTH + GAP));
+    const columns = Math.max(1, Math.min(HUD_FIELD_COUNT, fit));
+    const rows = Math.ceil(HUD_FIELD_COUNT / columns);
+    // Every row uses the full row's card width, so the cards line up in columns.
+    const cardWidth = Math.min(CARD_MAX_WIDTH, (width - 2 * PADDING - (columns - 1) * GAP) / columns);
+    cards = [];
+    for (let row = 0; row < rows; row++) {
+      const count = Math.min(columns, HUD_FIELD_COUNT - row * columns);
+      const y = HEADER_HEIGHT + GAP + row * (CARD_HEIGHT + GAP);
+      cards.push(...cardRow(PADDING, width - PADDING, y, count, cardWidth));
+    }
+    hudHeight = HEADER_HEIGHT + GAP + rows * CARD_HEIGHT + (rows - 1) * GAP + PADDING;
+    barCenterY = PADDING + BUTTON_HEIGHT / 2;
   }
 
+  const restart = {
+    x: width - PADDING - BUTTON_WIDTH,
+    y: barCenterY - BUTTON_HEIGHT / 2,
+    width: BUTTON_WIDTH,
+    height: BUTTON_HEIGHT,
+  };
   const hud: HudLayout = {
     placement: 'top',
-    rect: { x: 0, y: 0, width: viewport.width * r, height: hudHeight * r },
-    title: { x: PADDING * r, y: (TOP_HEADER_HEIGHT / 2) * r },
-    fields,
-    restart: { x: (viewport.width - PADDING - RESTART_HALF_WIDTH) * r, y: (TOP_HEADER_HEIGHT / 2) * r },
-    ...fontSizes(r),
+    rect: scaleRect({ x: 0, y: 0, width, height: hudHeight }, r),
+    title: { x: PADDING * r, y: barCenterY * r },
+    cards: cards.map((card) => scaleRect(card, r)),
+    cardStyle: 'stacked',
+    restart: scaleRect(restart, r),
+    titleFontSize: 20 * r,
+    labelFontSize: 10 * r,
+    valueFontSize: 19 * r,
+    buttonFontSize: 14 * r,
+    cornerRadius: CORNER_RADIUS * r,
   };
 
   const area = {
@@ -106,21 +159,27 @@ function topLayout(viewport: Viewport, arena: ArenaDimensions): ScreenLayout {
 
 function sideLayout(viewport: Viewport, arena: ArenaDimensions): ScreenLayout {
   const r = viewport.pixelRatio;
-  const fields: Vec2[] = [];
+  const innerWidth = SIDE_WIDTH - 2 * PADDING;
+  const cardsTop = PADDING + SIDE_TITLE_HEIGHT + GAP;
+  const cards: Rect[] = [];
   for (let i = 0; i < HUD_FIELD_COUNT; i++) {
-    fields.push({ x: PADDING * 2 * r, y: (SIDE_FIELDS_TOP + i * FIELD_ROW_HEIGHT) * r });
+    const y = cardsTop + i * (SIDE_CARD_HEIGHT + SIDE_CARD_GAP);
+    cards.push({ x: PADDING, y, width: innerWidth, height: SIDE_CARD_HEIGHT });
   }
+  const restart = { x: PADDING, y: cardsTop + SIDE_CARDS_HEIGHT + GAP, width: innerWidth, height: BUTTON_HEIGHT };
 
   const hud: HudLayout = {
     placement: 'side',
-    rect: { x: 0, y: 0, width: SIDE_WIDTH * r, height: viewport.height * r },
-    title: { x: PADDING * 2 * r, y: (PADDING + 20) * r },
-    fields,
-    restart: {
-      x: (PADDING * 2 + RESTART_HALF_WIDTH) * r,
-      y: (SIDE_FIELDS_TOP + HUD_FIELD_COUNT * FIELD_ROW_HEIGHT + 24) * r,
-    },
-    ...fontSizes(r),
+    rect: scaleRect({ x: 0, y: 0, width: SIDE_WIDTH, height: viewport.height }, r),
+    title: { x: PADDING * r, y: (PADDING + SIDE_TITLE_HEIGHT / 2) * r },
+    cards: cards.map((card) => scaleRect(card, r)),
+    cardStyle: 'inline',
+    restart: scaleRect(restart, r),
+    titleFontSize: 16 * r,
+    labelFontSize: 10 * r,
+    valueFontSize: 15 * r,
+    buttonFontSize: 14 * r,
+    cornerRadius: CORNER_RADIUS * r,
   };
 
   const area = {
@@ -132,8 +191,22 @@ function sideLayout(viewport: Viewport, arena: ArenaDimensions): ScreenLayout {
   return assemble(viewport, arena, hud, area);
 }
 
-function fontSizes(r: number): Pick<HudLayout, 'titleFontSize' | 'fieldFontSize' | 'buttonFontSize'> {
-  return { titleFontSize: TITLE_FONT * r, fieldFontSize: FIELD_FONT * r, buttonFontSize: BUTTON_FONT * r };
+/** `count` cards of up to `maxWidth`, evenly spaced and centered between `left` and `right`. */
+function cardRow(left: number, right: number, y: number, count: number, maxWidth: number): Rect[] {
+  const available = right - left;
+  const cardWidth = Math.min(maxWidth, (available - (count - 1) * GAP) / count);
+  const rowWidth = count * cardWidth + (count - 1) * GAP;
+  const start = left + (available - rowWidth) / 2;
+  return Array.from({ length: count }, (_, i) => ({
+    x: start + i * (cardWidth + GAP),
+    y,
+    width: cardWidth,
+    height: CARD_HEIGHT,
+  }));
+}
+
+function scaleRect(rect: Rect, r: number): Rect {
+  return { x: rect.x * r, y: rect.y * r, width: rect.width * r, height: rect.height * r };
 }
 
 /** Centers the largest arena that fits in `area` (CSS pixels) and converts to canvas pixels. */

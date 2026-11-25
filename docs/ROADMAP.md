@@ -1,4 +1,4 @@
-# Orbital Lock — Implementation Roadmap
+# Goal Lock — Implementation Roadmap
 
 This roadmap breaks the MVP defined in [REQUIREMENTS.md](REQUIREMENTS.md) into
 phases. The requirements remain the source of truth; if this roadmap conflicts
@@ -46,7 +46,7 @@ src/
   game/        state machine, failed attempts, score, timer, victory/defeat (§8.4)
   world/       GameWorld: combines the systems; driven by integration tests
   render/      Phaser drawing of arena, orbs, walls, preview (§5.4, §8.5)
-  audio/       collision sound, miss whistle, goal sound: synthesis and playback (§5.5, §8.6)
+  audio/       collision sound, foul whistle, goal sound: synthesis and playback (§5.5, §8.6)
   ui/          HUD, victory/defeat screens, restart
   layout/      viewport fitting, logical↔screen coordinate mapping
   scenes/      Phaser scenes: thin glue only

@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Orbital Lock is a 2D arcade puzzle game inspired by classic territory-capture games such as JezzBall.
+Goal Lock is a 2D arcade puzzle game inspired by classic territory-capture games such as JezzBall.
 
 The player must capture moving orbs by drawing free-form lines with the mouse. Lines can be horizontal, vertical, diagonal, or follow arbitrary paths. The objective is to enclose all orbs within regions that respect the maximum capture area.
 

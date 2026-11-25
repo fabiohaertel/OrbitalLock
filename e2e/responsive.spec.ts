@@ -17,12 +17,12 @@ interface LayoutInfo {
 
 async function open(page: Page, query = ''): Promise<void> {
   await page.goto(`/${query}`);
-  await page.waitForFunction(() => window.__orbitalLock?.scene.sys.isActive() === true);
+  await page.waitForFunction(() => window.__goalLock?.scene.sys.isActive() === true);
 }
 
 async function layoutInfo(page: Page): Promise<LayoutInfo> {
   return page.evaluate(() => {
-    const hook = window.__orbitalLock;
+    const hook = window.__goalLock;
     const canvas = document.querySelector('canvas');
     if (hook === undefined || canvas === null) throw new Error('game not ready');
     const layout = hook.scene.currentLayout;
@@ -70,7 +70,7 @@ function expectUsableLayout(info: LayoutInfo): void {
 
 async function arenaToPage(page: Page, x: number, y: number): Promise<{ x: number; y: number }> {
   return page.evaluate(([ax, ay]) => {
-    const hook = window.__orbitalLock;
+    const hook = window.__goalLock;
     if (hook === undefined) throw new Error('test hook missing');
     return hook.arenaToPage({ x: ax, y: ay });
   }, [x, y] as const);
@@ -106,7 +106,7 @@ test.describe('desktop', () => {
 
     // Commit a wall at x = 300 (or 700, whichever is clear of the orb), then
     // resize: the world must not change, only its placement.
-    const orbX = await page.evaluate(() => window.__orbitalLock?.world.orbs[0]?.position.x ?? 0);
+    const orbX = await page.evaluate(() => window.__goalLock?.world.orbs[0]?.position.x ?? 0);
     const wallX = Math.abs(orbX - 300) > 100 ? 300 : 700;
     const from = await arenaToPage(page, wallX, 5);
     const to = await arenaToPage(page, wallX, 620);
@@ -114,7 +114,7 @@ test.describe('desktop', () => {
     await page.mouse.down();
     await page.mouse.move(to.x, to.y, { steps: 15 });
     await page.mouse.up();
-    const wallsBefore = await page.evaluate(() => JSON.stringify(window.__orbitalLock?.world.walls));
+    const wallsBefore = await page.evaluate(() => JSON.stringify(window.__goalLock?.world.walls));
     expect(JSON.parse(wallsBefore)).toHaveLength(1);
 
     for (const [width, height] of [
@@ -126,7 +126,7 @@ test.describe('desktop', () => {
       await waitForViewport(page, width, height);
       const info = await layoutInfo(page);
       expectUsableLayout(info);
-      expect(await page.evaluate(() => JSON.stringify(window.__orbitalLock?.world.walls))).toBe(wallsBefore);
+      expect(await page.evaluate(() => JSON.stringify(window.__goalLock?.world.walls))).toBe(wallsBefore);
 
       // The wall's arena position maps into the new arena rectangle, at the same relative spot.
       const top = await arenaToPage(page, wallX, 0);
@@ -156,7 +156,7 @@ test.describe('mobile (Pixel 7, touch)', () => {
   test.use(pixel7);
 
   test('Play on a mobile viewport → HUD and arena stay usable without horizontal scrolling', async ({ page }) => {
-    await open(page, '?maxMisses=0&seed=2');
+    await open(page, '?maxFouls=0&seed=2');
     const info = await layoutInfo(page);
     expect(info.placement).toBe('top');
     expectUsableLayout(info);
@@ -167,30 +167,30 @@ test.describe('mobile (Pixel 7, touch)', () => {
     );
     expect(touchAction).toBe('none');
 
-    // A tap in the arena starts no drawing, so it is not a miss (REQUIREMENTS §3.3)…
+    // A tap in the arena starts no drawing, so it is not a foul (REQUIREMENTS §3.3)…
     const tap = await arenaToPage(page, 30, 30);
     await page.touchscreen.tap(tap.x, tap.y);
-    expect(await page.evaluate(() => window.__orbitalLock?.world.progress.failedAttempts)).toBe(0);
-    expect(await page.evaluate(() => window.__orbitalLock?.world.status)).toBe('playing');
+    expect(await page.evaluate(() => window.__goalLock?.world.progress.failedAttempts)).toBe(0);
+    expect(await page.evaluate(() => window.__goalLock?.world.status)).toBe('playing');
 
-    // …but a too-short touch stroke is; with no misses allowed it ends the game…
+    // …but a too-short touch stroke is; with no fouls allowed it ends the game…
     await touchDrag(page, [tap, await arenaToPage(page, 40, 30), await arenaToPage(page, 50, 30)]);
-    await expect.poll(() => page.evaluate(() => window.__orbitalLock?.world.status)).toBe('defeat');
+    await expect.poll(() => page.evaluate(() => window.__goalLock?.world.status)).toBe('defeat');
 
     // …and the HUD restart button works with touch.
     const restart = await page.evaluate(() => {
-      const hook = window.__orbitalLock;
+      const hook = window.__goalLock;
       if (hook === undefined) throw new Error('test hook missing');
       const button = hook.scene.buttonCenters.restart;
       return hook.canvasToPage(button);
     });
     await page.touchscreen.tap(restart.x, restart.y);
-    await expect.poll(() => page.evaluate(() => window.__orbitalLock?.world.status)).toBe('playing');
+    await expect.poll(() => page.evaluate(() => window.__goalLock?.world.status)).toBe('playing');
   });
 
   test('Draw using touch input → drawing works as expected', async ({ page }) => {
     await open(page, '?orbs=1&speed=1&seed=7');
-    const orb = await page.evaluate(() => window.__orbitalLock?.world.orbs[0]?.position);
+    const orb = await page.evaluate(() => window.__goalLock?.world.orbs[0]?.position);
     if (orb === undefined) throw new Error('no orb');
 
     // A square around the orb, drawn with one finger.
@@ -214,8 +214,8 @@ test.describe('mobile (Pixel 7, touch)', () => {
     }
     await touchDrag(page, points);
 
-    await expect.poll(() => page.evaluate(() => window.__orbitalLock?.world.status)).toBe('victory');
-    const walls = await page.evaluate(() => window.__orbitalLock?.world.walls.length);
+    await expect.poll(() => page.evaluate(() => window.__goalLock?.world.status)).toBe('victory');
+    const walls = await page.evaluate(() => window.__goalLock?.world.walls.length);
     expect(walls).toBe(1);
   });
 
@@ -240,7 +240,7 @@ test.describe('mobile (Pixel 7, touch)', () => {
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [{ ...other, id: 2 }] });
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
 
-    const path = await page.evaluate(() => window.__orbitalLock?.world.walls[0]?.path);
+    const path = await page.evaluate(() => window.__goalLock?.world.walls[0]?.path);
     expect(path).toBeDefined();
     for (const point of path ?? []) {
       expect(point.y).toBeCloseTo(500, 0);

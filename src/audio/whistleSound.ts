@@ -36,8 +36,8 @@ export const REFEREE_WHISTLE: WhistleSoundOptions = Object.freeze({
   peak: 0.9,
 });
 
-/** Playback volume for the miss whistle (0..1). A whistle is piercing, so it is kept moderate. */
-export const MISS_WHISTLE_VOLUME = 0.25;
+/** Playback volume for the foul whistle (0..1). A whistle is piercing, so it is kept moderate. */
+export const FOUL_WHISTLE_VOLUME = 0.25;
 
 /** The blow starts slightly flat and settles on pitch, like a whistle catching breath. */
 const PITCH_SETTLE_SECONDS = 0.04;

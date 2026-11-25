@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { GOAL_SOUND, GOAL_SOUND_VOLUME, goalSoundDuration, synthesizeGoal } from '../../src/audio/goalSound';
 import { COLLISION_SOUND_VOLUME, SOFT_KICK } from '../../src/audio/kickSound';
-import { MISS_WHISTLE_VOLUME, REFEREE_WHISTLE } from '../../src/audio/whistleSound';
+import { FOUL_WHISTLE_VOLUME, REFEREE_WHISTLE } from '../../src/audio/whistleSound';
 
 const RATE = 44_100;
 
@@ -97,6 +97,6 @@ describe('synthesizeGoal (REQUIREMENTS §5.5)', () => {
 
   it('is played at a moderate volume, like the other sounds', () => {
     expect(GOAL_SOUND_VOLUME).toBeGreaterThan(0);
-    expect(GOAL_SOUND_VOLUME).toBeLessThanOrEqual(Math.max(COLLISION_SOUND_VOLUME, MISS_WHISTLE_VOLUME) * 1.5);
+    expect(GOAL_SOUND_VOLUME).toBeLessThanOrEqual(Math.max(COLLISION_SOUND_VOLUME, FOUL_WHISTLE_VOLUME) * 1.5);
   });
 });

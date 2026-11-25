@@ -4,7 +4,7 @@ import type { GameEvent } from '../world/gameWorld';
 export interface SoundCues {
   /** At least one bounce: one kick sound for the whole batch (same frame). */
   readonly kick: boolean;
-  /** One referee whistle per miss (a rejected or canceled drawing). */
+  /** One referee whistle per foul (a rejected or canceled drawing). */
   readonly whistles: number;
   /** At least one wall captured orbs, turning a region into a goal net: one goal sound. */
   readonly goal: boolean;

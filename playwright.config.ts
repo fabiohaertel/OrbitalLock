@@ -4,7 +4,7 @@ const PORT = 5199;
 
 /**
  * Browser tests (e2e/). They run against the Vite dev server, because the test
- * hook (`window.__orbitalLock`) and URL overrides exist only in development builds.
+ * hook (`window.__goalLock`) and URL overrides exist only in development builds.
  */
 export default defineConfig({
   testDir: 'e2e',

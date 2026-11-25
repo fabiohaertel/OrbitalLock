@@ -1,8 +1,9 @@
-# Orbital Lock
+# Goal Lock
 
-A 2D arcade puzzle game for the browser, inspired by classic territory-capture
-games. Capture the moving orbs by drawing walls with your mouse or finger, and
-trap every orb inside a region small enough to lock it in place.
+A 2D arcade puzzle game for the browser, set on a soccer field. Soccer balls
+bounce around the pitch; draw walls with your mouse or finger to fence them in,
+and lock every ball inside a goal net. Inspired by classic territory-capture
+games, but your walls can take any shape.
 
 > **Status: complete MVP.** The full game loop works in desktop and mobile
 > browsers, with mouse or touch: draw walls, capture balls, win or lose, and
@@ -11,53 +12,55 @@ trap every orb inside a region small enough to lock it in place.
 
 ## How to play
 
-- Orbs bounce continuously around a rectangular arena, colliding with the arena
-  edges, the walls you draw, and each other.
-- Press and drag (mouse or touch) to draw a path. Paths can be straight,
-  diagonal or completely free-form.
-- When you release, a valid path becomes a permanent wall. A path encloses a
-  region when it forms a closed loop, or when it starts and ends on existing
-  walls or the arena edges.
-- An enclosed region captures every orb inside it, as long as the region is no
-  larger than the maximum capture area (15% of the arena by default). A region
-  with no orbs captures nothing.
-- A drawing fails if it passes through an orb, or if an orb touches the path
-  while you're still drawing it. Every failed drawing counts against you.
-- The arena is a soccer field, the orbs are rolling soccer balls, and captured
-  regions turn into goal nets. The theme is purely visual and doesn't change
-  any rule.
-- **Win** by capturing every orb. **Lose** when your failed drawings exceed the
-  allowed limit.
+- Soccer balls bounce continuously around the field, off its edges, off the
+  walls you draw and off each other.
+- Press and drag (mouse or touch) to draw a wall. It can be straight, diagonal
+  or completely free-form. A click or tap without dragging draws nothing.
+- When you release, a valid path becomes a permanent wall. A wall encloses a
+  region when it forms a closed loop, or when it starts and ends on other walls
+  or the field's edges.
+- An enclosed region captures every ball inside it, as long as it is no larger
+  than the maximum capture area (15% of the field). The region becomes a goal
+  net with the balls trapped behind it, and you hear a goal jingle. A region
+  with no balls captures nothing, and a region that is too large just stays a
+  wall: neither is a foul.
+- A drawing is a **foul** if it passes through a ball, or if a ball touches the
+  path while you are still drawing it. The referee blows the whistle, and the
+  fouls card in the HUD fills a pip.
+- **Win** by capturing every ball. **Lose** when you commit more fouls than
+  allowed (3 by default): the fouls card pulses red when the next foul would
+  end the game.
 
 The full rules are in [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
 
 ## Features
 
-What the MVP includes:
-
 - Free-form wall drawing, not limited to horizontal or vertical lines
-- Orb physics that doesn't depend on frame rate, with orb-to-orb collisions.
-  Stress-tested with dozens of fast orbs and hundreds of wall segments
+- Ball physics that doesn't depend on frame rate, with ball-to-ball collisions.
+  Stress-tested with dozens of fast balls and hundreds of wall segments
 - Detection of regions of any polygonal shape, with area-based capture rules
-- Configurable gameplay: number of orbs, orb size and speed, maximum capture
-  area, minimum drawing length, failure limit
-- Responsive layout for desktop, tablet and mobile, in portrait and landscape
-- Mouse and touch input
-- HUD with captured and remaining orbs, elapsed time, score and restart, plus
-  victory and defeat screens
-- Soccer theme: striped green field with faint markings, shaded balls that roll
-  in their direction of travel with a motion-blur trail, and goal-net
-  captured regions
+- Configurable gameplay. Defaults: 7 balls, ball speed 250 (field units per
+  second, on a 1000 × 625 field), maximum capture area 15%, 3 fouls allowed
+- Soccer theme: a striped green field with faint markings, shaded balls that
+  roll in their direction of travel with a motion-blur trail, and goal nets
+  over captured regions
+- Stadium-scoreboard HUD in the bundled Orbitron font: cards for captured and
+  remaining balls, elapsed time, score (it pops when it goes up) and fouls
+  (shown as pips), a pill restart button, and animated victory and defeat
+  screens with a final scoreboard
 - Synthesized sound effects (no audio files): a soft kick on every bounce, a
-  referee whistle on every miss, and a short goal jingle on every capture. The
+  referee whistle on every foul, and a short goal jingle on every capture. The
   game runs silently if the browser has no Web Audio support
+- Responsive layout for desktop, tablet and mobile, in portrait and landscape;
+  mouse and touch input
 
 ## Tech stack
 
 - [Phaser 4](https://phaser.io/) for rendering and input
 - [TypeScript](https://www.typescriptlang.org/) in strict mode
 - [Vite](https://vite.dev/) for the dev server and build
-- [Vitest](https://vitest.dev/) for tests
+- [Vitest](https://vitest.dev/) for unit and integration tests
+- [Playwright](https://playwright.dev/) for browser tests
 - [ESLint](https://eslint.org/) with `typescript-eslint`
 
 ## Getting started
@@ -78,8 +81,8 @@ Then open the URL that Vite prints (by default <http://localhost:5173>).
 | `npm run dev` | Start the development server |
 | `npm run build` | Type-check and build for production into `dist/` |
 | `npm run preview` | Serve the production build locally |
-| `npm test` | Run the test suite once |
-| `npm run test:watch` | Run tests in watch mode |
+| `npm test` | Run the unit and integration tests once |
+| `npm run test:watch` | Run those tests in watch mode |
 | `npm run test:e2e` | Run the browser tests (Playwright) |
 | `npm run typecheck` | Run the TypeScript compiler without emitting files |
 | `npm run lint` | Lint the project with ESLint |
@@ -87,19 +90,27 @@ Then open the URL that Vite prints (by default <http://localhost:5173>).
 Before the first `npm run test:e2e`, install the browser once with
 `npx playwright install chromium`.
 
-In development builds, gameplay values can be overridden from the URL for
-quick balancing, e.g. `http://localhost:5173/?orbs=3&speed=200&seed=7`
-(supported: `orbs`, `radius`, `speed`, `maxArea`, `minLength`, `maxMisses`,
-`seed`).
-
-The tests include a seeded stress test (many orbs and random walls, checking
-that nothing escapes the arena or crosses a wall) and a frame-budget check.
-Mobile performance was profiled only in Chromium emulation with CPU throttling,
-not on real devices.
-
 Use `npm test` rather than calling `vitest` directly. It goes through a small
 launcher that works around a Windows path issue (see
 [docs/DECISIONS.md](docs/DECISIONS.md)).
+
+### Development aids
+
+Development builds only (absent from `npm run build`):
+
+- Gameplay values can be overridden from the URL for quick balancing, e.g.
+  `http://localhost:5173/?orbs=3&speed=200&seed=7`. Supported: `orbs` (number
+  of balls), `radius`, `speed`, `maxArea`, `minLength`, `maxFouls` and `seed`
+  (a reproducible ball layout).
+- `window.__goalLock` exposes the running game to the browser tests.
+
+### Tests
+
+Besides unit tests for geometry, physics, capture rules and the HUD, the suite
+includes the acceptance scenarios from the requirements, a seeded stress test
+(many balls and random walls, checking that nothing escapes the field or
+crosses a wall) and a frame-budget check. Mobile performance was profiled only
+in Chromium emulation with CPU throttling, not on real devices.
 
 ## Project structure
 
@@ -107,16 +118,17 @@ launcher that works around a Windows path issue (see
 src/
   config/     gameplay configuration and defaults
   geometry/   vectors, segments, polylines, polygons, region detection
-  physics/    orbs, fixed-timestep simulation, collisions
-  audio/      synthesized sound effects: kick, whistle and goal sounds
+  physics/    balls ("orbs" in the code), fixed-timestep simulation, collisions
   drawing/    drawing input, wall validation and wall creation
-  capture/    capture rules: area limit, empty regions, capturing orbs
-  game/       game progress: status, failed attempts, score, timer
+  capture/    capture rules: area limit, empty regions, capturing balls
+  game/       game progress: status, fouls, score, timer
   world/      GameWorld: the complete game without rendering
-  layout/     responsive layout, viewport watching, screen-to-arena mapping
+  audio/      synthesized sound effects: kick, whistle and goal sounds
+  layout/     responsive layout, viewport watching, screen-to-field mapping
   render/     drawing the soccer field, balls, goal nets and feedback with Phaser
-  ui/         HUD, victory/defeat screens, buttons
+  ui/         HUD scoreboard cards, buttons, victory/defeat screens, font loading
   scenes/     Phaser scenes (glue between input, GameWorld and rendering)
+  assets/     bundled Orbitron UI font (SIL Open Font License)
   main.ts     game entry point
 tests/        unit and integration tests, mirroring src/
 e2e/          browser tests (Playwright)
@@ -126,7 +138,8 @@ scripts/      development helper scripts
 
 The game rules (geometry, physics, capture and game logic) are written in plain
 TypeScript with no Phaser dependency. They can be tested without a browser, and
-Phaser is used only to draw the game and receive input.
+Phaser is used only to draw the game and receive input. In the code, balls are
+called orbs and fouls are failed attempts, the names the rules use.
 
 ## Roadmap
 
@@ -144,11 +157,11 @@ Development follows the phases in [docs/ROADMAP.md](docs/ROADMAP.md):
 - [x] Phase 9 — Responsive layout and touch devices
 - [x] Phase 10 — Acceptance testing and hardening
 
-The production build uses relative asset paths, so it also runs from a
-sub-path, such as inside itch.io's iframe.
+The production build uses relative asset paths and bundles its font, so it
+also runs offline and from a sub-path, such as inside itch.io's iframe.
 
-Planned for after the MVP: multiple levels, high scores,
-obstacles, power-ups, special orbs, and music.
+Planned for after the MVP: multiple levels, high scores, obstacles, power-ups,
+special balls, and music.
 
 ## Documentation
 

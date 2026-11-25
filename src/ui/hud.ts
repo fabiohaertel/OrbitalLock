@@ -1,61 +1,98 @@
 import Phaser from 'phaser';
+import type { Vec2 } from '../geometry/vector';
 import type { HudLayout } from '../layout/screenLayout';
 import { THEME } from '../render/theme';
 import type { HudModel } from './hudModel';
-import { createTextButton, placeTextButton } from './textButton';
+import { PillButton } from './pillButton';
+import { StatCard } from './statCard';
 
 type HudField = keyof HudModel;
-const FIELDS: readonly HudField[] = ['captured', 'remaining', 'time', 'score', 'misses'];
+const FIELDS: readonly HudField[] = ['captured', 'remaining', 'time', 'score', 'fouls'];
+
+const ACCENTS: Record<HudField, string> = {
+  captured: THEME.accentCaptured,
+  remaining: THEME.accentNeutral,
+  time: THEME.accentNeutral,
+  score: THEME.accentScore,
+  fouls: THEME.accentNeutral,
+};
 
 /**
- * HUD (REQUIREMENTS §5.3): title, counters, time, score, misses and the
- * restart control. Positions and font sizes come from the screen layout and
- * are re-applied on every resize; the HUD never overlaps the arena.
+ * HUD (REQUIREMENTS §5.3, §5.6): the "GOAL LOCK" title, one scoreboard
+ * card per field (captured, remaining, time, score, fouls) and the restart
+ * button. Positions and sizes come from the screen layout and are re-applied
+ * on every resize; the HUD never overlaps the arena.
  */
 export class Hud {
-  private readonly title: Phaser.GameObjects.Text;
-  private readonly fields = new Map<HudField, Phaser.GameObjects.Text>();
-  readonly restartButton: Phaser.GameObjects.Text;
+  private readonly titleStart: Phaser.GameObjects.Text;
+  private readonly titleEnd: Phaser.GameObjects.Text;
+  private readonly cards = new Map<HudField, StatCard>();
+  private readonly restartButton: PillButton;
+  private model: HudModel | undefined;
 
-  constructor(scene: Phaser.Scene, layout: HudLayout, onRestart: () => void) {
-    this.title = scene.add
-      .text(0, 0, 'ORBITAL LOCK', { fontFamily: THEME.fontFamily, fontStyle: 'bold', color: THEME.text })
-      .setOrigin(0, 0.5);
+  constructor(scene: Phaser.Scene, layout: HudLayout, pixelRatio: number, onRestart: () => void) {
+    const titleStyle = { fontFamily: THEME.fontFamily, fontStyle: '800' };
+    this.titleStart = scene.add.text(0, 0, 'GOAL', { ...titleStyle, color: THEME.text }).setOrigin(0, 0.5);
+    this.titleEnd = scene.add.text(0, 0, 'LOCK', { ...titleStyle, color: THEME.accentScore }).setOrigin(0, 0.5);
 
     for (const field of FIELDS) {
-      const text = scene.add
-        .text(0, 0, '', { fontFamily: THEME.fontFamily, color: THEME.textMuted })
-        .setOrigin(0, 0.5);
-      this.fields.set(field, text);
+      this.cards.set(field, new StatCard(scene, { accent: ACCENTS[field], popOnIncrease: field === 'score' }));
     }
 
-    this.restartButton = createTextButton(scene, 'Restart', onRestart);
-    this.applyLayout(layout);
+    this.restartButton = new PillButton(scene, 'RESTART', onRestart, { restartIcon: true });
+    this.applyLayout(layout, pixelRatio);
   }
 
-  applyLayout(layout: HudLayout): void {
-    this.title.setFontSize(layout.titleFontSize).setPosition(layout.title.x, layout.title.y);
+  applyLayout(layout: HudLayout, pixelRatio: number): void {
+    const spacing = layout.titleFontSize * 0.08;
+    for (const part of [this.titleStart, this.titleEnd]) {
+      part
+        .setFontSize(layout.titleFontSize)
+        .setLetterSpacing(spacing)
+        .setShadow(0, 2 * pixelRatio, 'rgba(0, 0, 0, 0.6)', 4 * pixelRatio, false, true);
+    }
+    this.titleStart.setPosition(layout.title.x, layout.title.y);
+    this.titleEnd.setPosition(layout.title.x + this.titleStart.width + layout.titleFontSize * 0.4, layout.title.y);
+
+    const sizes = {
+      labelFontSize: layout.labelFontSize,
+      valueFontSize: layout.valueFontSize,
+      cornerRadius: layout.cornerRadius,
+      pixelRatio,
+    };
     FIELDS.forEach((field, index) => {
-      const anchor = layout.fields[index];
-      if (anchor !== undefined) {
-        this.fields.get(field)?.setFontSize(layout.fieldFontSize).setPosition(anchor.x, anchor.y);
-      }
+      const rect = layout.cards[index];
+      if (rect !== undefined) this.cards.get(field)?.place(rect, layout.cardStyle, sizes);
     });
-    placeTextButton(this.restartButton, layout.restart.x, layout.restart.y, layout.buttonFontSize);
+    this.restartButton.place(layout.restart, layout.buttonFontSize, pixelRatio);
   }
 
-  /** Updates the texts, re-rendering only those whose value changed. */
-  update(model: HudModel): void {
+  /** Updates the cards; only text that changed is re-rendered. `timeMs` drives the danger pulse. */
+  update(model: HudModel, timeMs: number): void {
+    this.model = model;
     for (const field of FIELDS) {
-      const text = this.fields.get(field);
-      if (text !== undefined && text.text !== model[field]) text.setText(model[field]);
+      const card = this.cards.get(field);
+      if (card === undefined) continue;
+      if (field === 'fouls') card.set(model.fouls, model.fouls);
+      else card.set(model[field]);
+      card.tick(timeMs);
     }
   }
 
-  /** Current HUD texts, for tests. */
+  /** Canvas-space center of the restart button, for tests. */
+  get restartCenter(): Vec2 {
+    return this.restartButton.center;
+  }
+
+  /** Right edge of the title in canvas pixels, for checking that it fits its slot. */
+  get titleRight(): number {
+    return this.titleEnd.x + this.titleEnd.width;
+  }
+
+  /** Current HUD fields as plain text (e.g. `Fouls: 1 / 3`), for tests and accessibility. */
   read(): Record<HudField, string> {
     const result = {} as Record<HudField, string>;
-    for (const field of FIELDS) result[field] = this.fields.get(field)?.text ?? '';
+    for (const field of FIELDS) result[field] = this.model?.[field].text ?? '';
     return result;
   }
 }
