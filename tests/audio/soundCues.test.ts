@@ -60,11 +60,11 @@ describe('goal sound cue (REQUIREMENTS §5.5)', () => {
     expect(soundCuesFor(events).goal).toBe(true);
   });
 
-  it('plays for the capture that wins the game', () => {
+  it('plays for the capture that clears a level, with no other sound for the level clear', () => {
     const world = worldWith(() => [makeOrb(200, 200, 0, 0, 12)]);
     const events = draw(world, square(120, 120, 160), true);
-    expect(events.at(-1)).toEqual({ kind: 'gameOver', status: 'victory' });
-    expect(soundCuesFor(events).goal).toBe(true);
+    expect(events.at(-1)?.kind).toBe('levelComplete');
+    expect(soundCuesFor(events)).toEqual({ kick: false, whistles: 0, goal: true });
   });
 
   it('does not play when a valid wall captures nothing', () => {

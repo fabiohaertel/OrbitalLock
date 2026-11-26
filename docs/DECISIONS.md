@@ -1,6 +1,6 @@
 # Goal Lock — Technical Decisions
 
-Gameplay design decisions (D1–D7) are part of the requirements: see
+Gameplay design decisions (D1–D11) are part of the requirements: see
 [REQUIREMENTS.md §11](REQUIREMENTS.md#11-design-decisions).
 
 This document records project-level technical decisions only.
@@ -128,18 +128,33 @@ This document records project-level technical decisions only.
 - **Game logic** (`src/game/progress.ts`, `src/world/gameWorld.ts`):
   - `GameWorld` is the whole game without rendering. It takes frame time and
     pointer input, and returns events (`wallCreated` with its capture report,
-    `attemptFailed`, `gameOver`) for rendering and feedback.
+    `attemptFailed`, `levelComplete` with the bonus, `gameOver` for a defeat)
+    for rendering and feedback.
   - Failed attempts follow D3 literally: too-short strokes (including a tap
     inside the arena), drawings that touch an orb, and browser input cancels
     all count. A press outside the arena starts nothing and costs nothing.
   - Physics, the drawing-contact check and the clock run in the same fixed
-    steps. When the game is over, everything freezes and input is ignored
-    until restart.
-  - Restart creates a fresh set of orbs with the configured count. By default
-    the positions are random, so each game has a new layout; tests pass a
-    seeded spawner to check exact restoration.
-  - Score: 100 points per captured orb (REQUIREMENTS D9), defined in
-    `POINTS_PER_CAPTURED_ORB`.
+    steps. When a level is cleared or the game is lost, everything freezes and
+    input is ignored until `nextLevel()` or restart.
+  - Levels (D10): `GameWorld.config` is the current level's config, built by
+    a `levelConfig(level, base)` option (the level table by default; tests can
+    keep one config on every level). `nextLevel()` works only after a cleared
+    level: it clears walls and captured regions, recreates the wall builder and
+    the fixed timestep, and spawns the next level's orbs. Restart starts a new
+    game at the first level.
+  - `GameProgress` keeps the level's counters (`capturedOrbs`,
+    `failedAttempts`, `elapsedSeconds`) and the game's (`score`,
+    `totalSeconds`). `startLevel` resets the first and keeps the second.
+  - Each level's orbs are new, with random positions by default; tests pass a
+    seeded or hand-placed spawner, which receives the level's config.
+  - Score: captures and level-clear bonuses follow REQUIREMENTS D11
+    (`src/game/scoring.ts`). The bonus is added in `recordCaptures` when the
+    last orb of a level is captured, using the level's time and unused fouls.
+- **Levels** (`src/game/levels.ts`): `levelDefinition(level)` reads the D10
+  table for levels 1–10, then adds one orb per level; the limits (16 orbs,
+  300 units/s, 8% area) are applied to every level. `levelConfig(level, base)`
+  puts the level's four values on top of the base config and validates the
+  result. 16 orbs of radius 12 always fit (checked with 200 seeds).
 - **Rendering and UI** (`src/render/`, `src/ui/`, `src/scenes/GameScene.ts`):
   - One Phaser Graphics object, positioned and scaled by the arena
     transform, redraws everything in arena coordinates each frame: arena,
@@ -148,7 +163,14 @@ This document records project-level technical decisions only.
   - Failed drawings flash red for 0.6 s along the path the player drew
     (REQUIREMENTS §3.7).
   - The HUD shows the fouls (failed attempts against the limit) in addition
-    to the §5.2 fields, so the player can see how close defeat is.
+    to the §5.2 fields, so the player can see how close defeat is. The LEVEL
+    card is first.
+  - The end-screen panel (`GameOverOverlay`, model from `buildEndScreenModel`)
+    shows either the level-cleared screen (bonus parts as three cards, "Bonus
+    +N · Score M" under the title, "NEXT LEVEL") or the defeat screen (score,
+    level reached, total time, "PLAY AGAIN"). It holds both buttons in the same
+    place and shows only the one for the current screen; Phaser does not send
+    input to hidden objects or objects with a hidden parent.
   - Line widths and HUD fonts are set in CSS pixels, so they look the same at
     any arena scale or pixel density.
 - **Interface style** (`src/ui/`, REQUIREMENTS §5.6):
@@ -186,9 +208,10 @@ This document records project-level technical decisions only.
     scale-and-responsive skill advises. 3× phones render at 2× and are
     upscaled.
   - `computeLayout` is a pure function. It tries the HUD on top (one bar when
-    the title, five cards and the button fit, at least 888 CSS pixels wide;
+    the title, six cards and the button fit, at least 992 CSS pixels wide;
     otherwise the cards wrap into rows below a header) and in a 184-px side
-    column, and keeps whichever leaves the larger arena: top on 16:10
+    column (30-px cards with 4-px gaps, so a 320-px-tall landscape phone still
+    gets the side column), and keeps whichever leaves the larger arena: top on 16:10
     desktops and in portrait, side on landscape phones and on 16:9 windows.
     All HUD metrics sit on an 8-px grid. The arena keeps its 16:10 ratio (D6), is centered in the
     remaining space, and never overlaps the HUD. In portrait the arena is
@@ -208,7 +231,11 @@ This document records project-level technical decisions only.
 - **Development aids** (development builds only; absent from `npm run build`):
   - URL overrides for manual balancing and browser tests: `?orbs=`,
     `radius=`, `speed=`, `maxArea=`, `minLength=`, `maxFouls=`, and `seed=`
-    for a reproducible layout.
+    for a reproducible layout. The config overrides replace the level table's
+    values on every level, so a test can fix them for a whole game.
+  - `?level=N` starts each new game (including restarts) at level N, to check
+    later levels without playing through. A value that is not an integer ≥ 1
+    is ignored.
   - `window.__goalLock`, a test hook exposing the world, scene and
     coordinate conversions to Playwright.
 - **Browser tests:** Playwright 1.65.0 with Chromium only (`npm run test:e2e`,

@@ -29,6 +29,8 @@ export function soundCuesFor(events: readonly GameEvent[]): SoundCues {
       case 'wallCreated':
         if (event.capture.capturedOrbIds.length > 0) goal = true;
         break;
+      // A level clear has no sound of its own: the capture's goal sound marks it (§5.5).
+      case 'levelComplete':
       case 'gameOver':
         break;
     }

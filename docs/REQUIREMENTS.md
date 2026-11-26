@@ -93,22 +93,25 @@ Functional requirements:
 - The arena must remain in a consistent state after a canceled drawing.
 - Construction semantics: see D2 (§11.1).
 
-### 3.8 Victory and Defeat
+### 3.8 Levels and Defeat
 
-Victory:
+The game is a sequence of levels, each harder than the last (D10, §11.1).
 
-- All orbs have been successfully captured.
+Level cleared:
+
+- All orbs of the current level have been successfully captured.
+- The player then starts the next level. There is no final victory: levels continue until defeat.
 
 Defeat:
 
-- The player exceeds the configured number of failed drawing attempts (fouls) or available lives.
+- The player exceeds the current level's number of failed drawing attempts (fouls) or available lives.
 - Every rejected or canceled drawing counts as a failed attempt, called a foul in the game. A click or tap that never started a drawing (§3.3) does not: see D3 (§11.1).
 
 The game must provide:
 
-- Victory screen.
+- Level-cleared screen, with a control to start the next level.
 - Defeat screen.
-- Restart functionality.
+- Restart functionality (back to level 1).
 
 ## 4. Gameplay Configuration
 
@@ -128,6 +131,8 @@ Initial balancing defaults:
 - Orb movement speed: 250 arena units per second (the arena is 1000 × 625 units, D6). Playtesting found 160 and 200 too slow and 320 too fast.
 
 Other values should be selected during prototype development and remain configurable.
+
+These values form the base configuration. With level progression (D10), each level sets its own number of orbs, orb speed, maximum capture area and maximum failed attempts from the level table; the orb radius and minimum drawing length come from the base configuration on every level. The level table in D10 holds the final balancing values (approved 2026-11-25).
 
 ## 5. User Interface
 
@@ -157,6 +162,7 @@ The initial interface must include:
 - Remaining orb counter.
 - Elapsed time.
 - Current score.
+- Current level.
 - Restart control.
 
 ### 5.3 HUD
@@ -166,10 +172,11 @@ The HUD must display relevant gameplay information without obstructing the arena
 - Each field is a scoreboard card: a small upper-case label above (or, in a narrow side column, beside) a large value.
 - The HUD also shows the fouls: failed attempts against the allowed limit (D3). They are shown as one pip per allowed foul, filled for each foul used. When the next foul would lose the game, the fouls card pulses red. Very large or zero limits are shown as a number (`used/max`) instead of pips.
 - The score value briefly enlarges when it goes up.
+- The HUD shows the current level. The time is the current level's time; the score is the whole game's score (D10).
 
 Example (wide screen, one bar):
 
-    GOAL LOCK  [CAPTURED 3/8] [REMAINING 5] [TIME 00:42] [SCORE 450] [FOULS ●○○]  (↻ RESTART)
+    GOAL LOCK  [LEVEL 3] [CAPTURED 3/5] [REMAINING 2] [TIME 00:42] [SCORE 4650] [FOULS ●○○]  (↻ RESTART)
 
 ### 5.4 Visual Style
 
@@ -184,7 +191,7 @@ The arena is themed as a soccer field and the orbs as soccer balls. The theme is
   - the rolling speed matches the distance travelled (rolling without slipping: the ball turns by distance ÷ radius radians), so faster balls spin faster;
   - after a bounce the ball keeps its current orientation and rolls in its new direction;
   - the shading and highlight stay fixed (the light does not turn with the ball), so it keeps reading as a sphere;
-  - a ball that stops moving (captured, or the game is over) keeps the orientation it had and stops rolling.
+  - a ball that stops moving (captured, or the level or game is over) keeps the orientation it had and stops rolling.
 - Moving balls must show a motion-blur trail, like a photo of a ball in flight:
   - a soft, translucent light-gray streak behind the ball that fades out and narrows towards its end;
   - the trail follows the path the ball actually travelled, so after a bounce it bends around the bounce point and never extends through a wall, an arena boundary or a captured region;
@@ -226,7 +233,7 @@ The arena is themed as a soccer field and the orbs as soccer balls. The theme is
 - Every time a capture occurs, a short, celebratory goal sound must be played.
 - A capture occurs when a new wall captures at least one orb. Its region becomes a goal net (D4, §5.4), and the goal sound starts at that moment.
 - One wall plays one goal sound, however many orbs or regions it captures.
-- A capture that wins the game also plays the goal sound.
+- A capture that clears a level also plays the goal sound. It is the only sound for the level clear (no separate sound).
 - No goal sound plays when a wall captures nothing: an empty region, a region over the maximum capture area (D3, D5), or a wall that encloses nothing. No goal sound plays for a foul either.
 - The goal sound is synthesized and about half a second long:
   - a short swish of the ball hitting the net (noise whose pitch sweeps down);
@@ -240,25 +247,25 @@ The arena is themed as a soccer field and the orbs as soccer balls. The theme is
 
 ### 5.6 Interface Style
 
-The HUD, buttons and victory/defeat screens look like a stadium scoreboard. The style is purely visual: it does not change any gameplay rule.
+The HUD, buttons and level-cleared/defeat screens look like a stadium scoreboard. The style is purely visual: it does not change any gameplay rule.
 
 - Font: Orbitron, bundled with the game (no external font service), so it also works offline and inside embedding pages. It is loaded before the game starts; if it cannot load, the game starts with a system font.
 - Scoreboard cards are dark navy rounded panels with a thin border. Labels are muted; each value has an accent color: captured green, score gold, the others white.
 - The title reads "GOAL LOCK", with "LOCK" in gold.
 - Buttons are gold pills with a dark bold label and an icon where it helps (a circular arrow for restart). They lighten on hover, shrink slightly while pressed, and act on release. Each is at least 40 CSS pixels tall, so it is easy to tap.
 - On wide screens the title, cards and restart button share one bar above the arena. On narrower screens the cards wrap into centered rows below the title and button. In a side column the cards are stacked, with the label left and the value right.
-- The victory/defeat screen dims the arena and pops in a rounded panel: the result title (gold for victory, red for defeat), a one-line reason, a final scoreboard (score, time, captured) and a "Play again" button. It shrinks to fit small arenas.
+- The level-cleared and defeat screens dim the arena and pop in a rounded panel that shrinks to fit small arenas:
+  - Level cleared: a gold "LEVEL N CLEAR" title, each level-clear bonus and their total (D11), the new score, and a "Next level" button.
+  - Defeat: a red "DEFEAT" title, a one-line reason, a final scoreboard (level reached, total score, total time) and a "Play again" button that starts again at level 1.
 - Text and the elements it sits on keep a contrast ratio of at least 4.5:1.
 
 ## 6. Scoring
 
 The game must maintain a score for the current session.
 
-The scoring formula and bonuses will be defined during gameplay balancing.
+The score accumulates across levels and resets when the game restarts at level 1 (D10).
 
-The initial implementation must provide the score tracking infrastructure without requiring a complex scoring system.
-
-Placeholder rule for the MVP: see D9 (§11.1).
+Captures and level clears award points that grow with the level: see D11 (§11.1).
 
 ## 7. Non-Functional Requirements
 
@@ -335,8 +342,8 @@ Responsible for:
 - Game state.
 - Scoring.
 - Lives and failed attempts.
-- Victory and defeat conditions.
-- Level progression (single level for the MVP: see D7, §11.1).
+- Level-cleared and defeat conditions.
+- Level progression and per-level configuration (D10, §11.1).
 
 ### 8.5 Rendering and UI
 
@@ -370,16 +377,17 @@ The initial implementation must satisfy the following scenarios:
 | Draw a region containing no active orbs | No capture occurs |
 | Draw through an active orb | Drawing is rejected |
 | Orb hits a wall during construction | Drawing is canceled |
-| Capture all orbs | Victory is triggered |
-| Exceed the failure limit | Defeat is triggered |
+| Capture all orbs of a level | The level-cleared screen shows the level-clear bonuses |
+| Start the next level | Empty arena, next level's orbs and limits, fouls reset, score kept |
+| Exceed the failure limit | Defeat is triggered, showing the level reached and the total score |
 | Click or tap the arena without moving the pointer | Nothing is drawn and no foul is counted |
 | Attempt to draw outside the arena | Drawing is constrained to arena boundaries |
-| Restart the game | Initial game state is restored |
+| Restart the game | Initial game state is restored at level 1 with a score of 0 |
 | Resize the browser window | Arena adapts to the available viewport |
 | Change mobile device orientation | Arena adapts to the new dimensions |
 | Draw using touch input | Drawing works as expected |
 | Play on a mobile viewport | HUD and arena remain usable without horizontal scrolling |
-| View the HUD and the victory/defeat screen | Scoreboard cards and pill buttons in the Orbitron font; fouls shown as pips |
+| View the HUD and the level-cleared/defeat screen | Scoreboard cards and pill buttons in the Orbitron font; fouls shown as pips; current level shown |
 | View the arena | Arena looks like a green soccer field; orbs look like soccer balls |
 | Watch a moving ball | It rolls in its direction of travel and leaves a fading motion-blur trail |
 | An orb bounces off an arena boundary, a wall or another orb | A soft kick sound plays |
@@ -389,9 +397,8 @@ The initial implementation must satisfy the following scenarios:
 
 ## 10. Future Features
 
-The following features are outside the initial MVP scope:
+The following features are outside the current scope (multiple levels with increasing difficulty were added by D10):
 
-- Multiple levels with increasing difficulty.
 - Different orb sizes and movement speeds.
 - Time limits.
 - High scores and leaderboards.
@@ -408,7 +415,7 @@ These features may be introduced after the core gameplay mechanics are implement
 
 ### 11.1 Resolved Decisions
 
-The following decisions were approved for the MVP on 2026-11-24.
+D1–D9 were approved for the MVP on 2026-11-24. D10 and D11 were approved on 2026-11-25 and replace D7 and D9.
 
 #### D1 — Region closure
 
@@ -466,12 +473,9 @@ Resolves: whether the arena should preserve a fixed aspect ratio or use all avai
 - All game state uses a fixed logical coordinate space, independent of screen size.
 - Rendering scales logical coordinates to screen pixels, so resizing does not change the relative positions or proportions of game elements.
 
-#### D7 — Level progression
+#### D7 — Level progression (replaced by D10)
 
-Clarifies §8.4, which lists level progression although multiple levels are a future feature (§10).
-
-- The MVP has a single level plus restart.
-- No level-progression system is built for the MVP.
+The MVP had a single level plus restart and no level-progression system. Replaced by D10.
 
 #### D8 — Manual cancellation
 
@@ -481,12 +485,51 @@ Resolves: whether a wall can be partially drawn and then canceled manually.
 - A drawing ends only when it is released (and then validated) or when the game cancels it: an active orb touches it (D2), or the browser cancels the input.
 - A browser cancel before the drawing has started (§3.3) discards the press and is not a failed attempt.
 
-#### D9 — Placeholder scoring
+#### D9 — Placeholder scoring (replaced by D11)
 
-Clarifies §6, which leaves the scoring formula to gameplay balancing.
+The MVP awarded 100 points per captured orb. Replaced by D11, which gives the same 100 points per orb on level 1.
 
-- Until balancing defines the formula, each captured orb awards 100 points.
+#### D10 — Level progression
+
+Replaces D7. Resolves: what happens when every orb is captured, and how difficulty grows.
+
+- The game is **endless**: clearing a level leads to the next one, until the player is defeated. There is no final victory.
+- When the last orb of a level is captured, the simulation stops and the level-cleared screen (§5.6) appears. The next level starts only when the player chooses it; there is no automatic advance.
+- A new level starts with an empty arena (no walls or captured regions) and new orbs at random positions, created from that level's values.
+- **Fouls reset every level.** Each level has its own foul limit; defeat is exceeding the current level's limit (D3).
+- **The score accumulates** across levels. The time shown while playing is the current level's; the defeat screen shows the total time of the game.
+- Restart (the HUD button or "Play again") always starts a new game at level 1 with a score of 0. There is no restart of a single level.
+- Each level sets four values: number of orbs, orb speed, maximum capture area and foul limit. The orb radius (12) and the minimum drawing length come from the base configuration (§4).
+
+Level table (final balancing values, approved 2026-11-25):
+
+| Level | Orbs | Speed (units/s) | Max capture area | Fouls allowed |
+| --- | --- | --- | --- | --- |
+| 1 | 3 | 220 | 15% | 4 |
+| 2 | 4 | 230 | 15% | 4 |
+| 3 | 5 | 240 | 14% | 3 |
+| 4 | 6 | 250 | 13% | 3 |
+| 5 | 7 | 250 | 12% | 3 |
+| 6 | 8 | 260 | 11% | 3 |
+| 7 | 9 | 270 | 10% | 3 |
+| 8 | 10 | 280 | 10% | 2 |
+| 9 | 11 | 290 | 9% | 2 |
+| 10 | 12 | 300 | 8% | 2 |
+| 11 and later | 1 more per level, at most 16 | 300 | 8% | 2 |
+
+- Speed never exceeds 300 (playtesting found 320 too fast, §4). The orb count never exceeds 16 and the maximum capture area never goes below 8%.
+
+#### D11 — Per-level scoring
+
+Replaces D9. Clarifies §6.
+
+- **Capture:** each captured orb awards `100 × level` points.
+- **Level-clear bonus**, awarded when a level is cleared, is the sum of:
+  - **Level:** `500 × level`.
+  - **Fouls:** `200` for each foul still unused (the level's foul limit minus the fouls committed).
+  - **Time:** `10` for each whole second under 60 s of level time (`10 × floor(max(0, 60 − level seconds))`); nothing at 60 s or more.
+- No part is ever negative. The level-cleared screen shows each part and their total.
 
 ### 11.2 Open Decisions
 
-No open decisions remain for the MVP.
+No open decisions remain.

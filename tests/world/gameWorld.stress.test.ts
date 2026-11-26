@@ -13,6 +13,7 @@ import { detectRegions, regionContainsPoint, type Region } from '../../src/geome
 import { distancePointToSegment } from '../../src/geometry/segment';
 import type { Vec2 } from '../../src/geometry/vector';
 import { createSeededRandom, type RandomSource } from '../../src/physics/random';
+import { levelConfig } from '../../src/game/levels';
 import { createOrbs } from '../../src/physics/spawn';
 import { GameWorld } from '../../src/world/gameWorld';
 
@@ -83,6 +84,7 @@ function stressRun(seed: number, config: Partial<GameplayConfig>, seconds: numbe
   const random = createSeededRandom(seed);
   const world = new GameWorld({
     config: { ...DEFAULT_GAMEPLAY_CONFIG, maxFailedAttempts: 1_000_000, ...config },
+    levelConfig: (_level, base) => base,
     spawnOrbs: (cfg, arena) => createOrbs(cfg, arena, createSeededRandom(seed * 31)),
   });
   const problems: string[] = [];
@@ -143,6 +145,13 @@ describe('stress: many orbs and walls', () => {
 
   it.each([5, 6])('stays consistent with many fast orbs (seed %i)', (seed) => {
     expectConsistent(stressRun(seed, { initialOrbCount: 40, orbSpeed: 400 }, 40));
+  });
+
+  it.each([11, 12, 13])('stays consistent at the hardest level (D10 limits, seed %i)', (seed) => {
+    // 16 orbs at 300 units/s with an 8% capture area; fouls never end the run.
+    const hardest = levelConfig(1000, DEFAULT_GAMEPLAY_CONFIG);
+    expect(hardest.initialOrbCount).toBe(16);
+    expectConsistent(stressRun(seed, { ...hardest, maxFailedAttempts: 1_000_000 }, 60));
   });
 
   it.each([7, 9])('stays consistent with large orbs and small capture areas (seed %i)', (seed) => {

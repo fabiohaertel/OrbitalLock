@@ -2,6 +2,9 @@ import { expect, test, type Page } from '@playwright/test';
 
 interface Snapshot {
   status: string;
+  level: number;
+  score: number;
+  walls: number;
   hud: Record<string, string>;
   overlay: { visible: boolean; title: string };
   orbs: { x: number; y: number; radius: number; capture: string }[];
@@ -18,6 +21,9 @@ async function snapshot(page: Page): Promise<Snapshot> {
     if (hook === undefined) throw new Error('test hook missing');
     return {
       status: hook.world.status,
+      level: hook.world.level,
+      score: hook.world.progress.score,
+      walls: hook.world.walls.length,
       hud: hook.scene.hudTexts,
       overlay: hook.scene.overlayState,
       orbs: hook.world.orbs.map((orb) => ({
@@ -48,7 +54,7 @@ async function arenaToPage(page: Page, x: number, y: number): Promise<{ x: numbe
   }, [x, y] as const);
 }
 
-async function clickButton(page: Page, which: 'restart' | 'playAgain'): Promise<void> {
+async function clickButton(page: Page, which: 'restart' | 'playAgain' | 'nextLevel'): Promise<void> {
   const center = await page.evaluate((name) => {
     const hook = window.__goalLock;
     if (hook === undefined) throw new Error('test hook missing');
@@ -94,15 +100,17 @@ async function drawSquareAround(page: Page, cx: number, cy: number, half: number
   await page.mouse.up();
 }
 
-test('HUD shows the counters, time and score', async ({ page }) => {
+test('HUD shows the level, counters, time and score', async ({ page }) => {
   await open(page);
   const initial = await snapshot(page);
+  // Level 1 of the level table: 3 orbs, 4 fouls allowed (D10).
   expect(initial.hud).toEqual({
-    captured: 'Captured: 0 / 7',
-    remaining: 'Remaining: 7',
+    level: 'Level: 1',
+    captured: 'Captured: 0 / 3',
+    remaining: 'Remaining: 3',
     time: initial.hud.time,
     score: 'Score: 0',
-    fouls: 'Fouls: 0 / 3',
+    fouls: 'Fouls: 0 / 4',
   });
   // Game time runs in fixed steps and can lag wall-clock time on a busy machine. Polls can
   // also be late, so wait for the clock to reach 2 s rather than to show exactly 00:02.
@@ -140,7 +148,7 @@ test('the HUD uses the bundled Orbitron font, and the title fits next to the car
 test('a failed drawing is counted in the HUD', async ({ page }) => {
   await open(page, '?seed=3');
   await shortStroke(page);
-  await expect.poll(async () => (await snapshot(page)).hud.fouls).toBe('Fouls: 1 / 3');
+  await expect.poll(async () => (await snapshot(page)).hud.fouls).toBe('Fouls: 1 / 4');
 });
 
 test('clicking the arena without drawing is not a foul', async ({ page }) => {
@@ -169,30 +177,84 @@ test('exceeding the failure limit shows the defeat screen, and restart restores 
   expect(after.hud.time).toBe('Time: 00:00');
 });
 
-test('capturing every orb shows the victory screen, and "Play again" restarts', async ({ page }) => {
+test('capturing every orb shows the level-cleared screen, and "Next level" starts level 2', async ({ page }) => {
   // One almost stationary orb, so a square can be drawn around it reliably.
   await open(page, '?orbs=1&speed=1&seed=7');
   const [orb] = (await snapshot(page)).orbs;
   if (orb === undefined) throw new Error('no orb');
+  expect((await snapshot(page)).hud.level).toBe('Level: 1');
 
   await drawSquareAround(page, orb.x, orb.y, 70);
 
-  await expect.poll(async () => (await snapshot(page)).overlay).toEqual({ visible: true, title: 'VICTORY' });
-  const won = await snapshot(page);
-  expect(won.status).toBe('victory');
-  expect(won.hud.captured).toBe('Captured: 1 / 1');
-  expect(won.hud.score).toBe('Score: 100');
-  expect(won.orbs[0]?.capture).toBe('captured');
+  await expect.poll(async () => (await snapshot(page)).overlay).toEqual({ visible: true, title: 'LEVEL 1 CLEAR' });
+  const cleared = await snapshot(page);
+  expect(cleared.status).toBe('levelComplete');
+  expect(cleared.hud.captured).toBe('Captured: 1 / 1');
+  // 100 for the orb plus the level-clear bonus (D11): 500 for level 1, 4 × 200 for unused fouls, and a time bonus.
+  const bonus = await page.evaluate(() => window.__goalLock?.world.progress.levelBonus);
+  expect(bonus?.level).toBe(500);
+  expect(bonus?.fouls).toBe(800);
+  expect(cleared.score).toBe(100 + (bonus?.total ?? Number.NaN));
+  expect(cleared.orbs[0]?.capture).toBe('captured');
   // A captured ball no longer moves, so it has no motion-blur trail (REQUIREMENTS §5.4).
   expect(await page.evaluate(() => window.__goalLock?.scene.ballVisuals[0]?.trailGhosts)).toBe(0);
-  // The capture that won the game played the goal sound once (REQUIREMENTS §5.5).
+  // The capture that cleared the level played the goal sound once, and nothing else (REQUIREMENTS §5.5).
   expect(await page.evaluate(() => window.__goalLock?.scene.goalSoundsPlayed)).toBe(1);
+
+  await clickButton(page, 'nextLevel');
+  const next = await snapshot(page);
+  expect(next.status).toBe('playing');
+  expect(next.overlay.visible).toBe(false);
+  expect(next.level).toBe(2);
+  expect(next.walls).toBe(0);
+  expect(next.orbs.every((o) => o.capture === 'active')).toBe(true);
+  expect(next.score).toBe(cleared.score);
+  expect(next.hud.level).toBe('Level: 2');
+  expect(next.hud.captured).toBe('Captured: 0 / 1');
+  expect(next.hud.fouls).toBe('Fouls: 0 / 4');
+  expect(next.hud.time).toBe('Time: 00:00');
+});
+
+test('a defeat on level 2 shows the level reached, and "Play again" returns to level 1 with a score of 0', async ({ page }) => {
+  await open(page, '?orbs=1&speed=1&seed=7&maxFouls=0');
+  const [orb] = (await snapshot(page)).orbs;
+  if (orb === undefined) throw new Error('no orb');
+  await drawSquareAround(page, orb.x, orb.y, 70);
+  await expect.poll(async () => (await snapshot(page)).status).toBe('levelComplete');
+  await clickButton(page, 'nextLevel');
+  expect((await snapshot(page)).level).toBe(2);
+  const score = (await snapshot(page)).score;
+  expect(score).toBeGreaterThan(0);
+
+  await shortStroke(page);
+  await expect.poll(async () => (await snapshot(page)).overlay).toEqual({ visible: true, title: 'DEFEAT' });
+  const lost = await snapshot(page);
+  expect(lost.status).toBe('defeat');
+  expect(lost.level).toBe(2);
+  expect(lost.score).toBe(score);
 
   await clickButton(page, 'playAgain');
   const after = await snapshot(page);
   expect(after.status).toBe('playing');
   expect(after.overlay.visible).toBe(false);
-  expect(after.hud.captured).toBe('Captured: 0 / 1');
+  expect(after.level).toBe(1);
+  expect(after.score).toBe(0);
+  expect(after.hud.level).toBe('Level: 1');
+  expect(after.hud.score).toBe('Score: 0');
+});
+
+test('without overrides each level uses the level table, and ?level=N starts at level N', async ({ page }) => {
+  await open(page, '?seed=3');
+  let state = await snapshot(page);
+  expect(state.orbs).toHaveLength(3);
+  expect(state.hud.fouls).toBe('Fouls: 0 / 4');
+
+  await open(page, '?seed=3&level=10');
+  state = await snapshot(page);
+  expect(state.level).toBe(10);
+  expect(state.hud.level).toBe('Level: 10');
+  expect(state.orbs).toHaveLength(12);
+  expect(state.hud.fouls).toBe('Fouls: 0 / 2');
 });
 
 test('Capture an orb → the captured region looks like a goal net with the ball trapped inside', async ({ page }) => {
@@ -269,7 +331,7 @@ test('a right click while drawing does not end the drawing', async ({ page }) =>
   const walls = await page.evaluate(() => window.__goalLock?.world.walls.map((wall) => wall.path.at(-1)?.x) ?? []);
   expect(walls).toHaveLength(1);
   expect(walls[0]).toBeGreaterThan(790);
-  expect((await snapshot(page)).hud.fouls).toBe('Fouls: 0 / 3');
+  expect((await snapshot(page)).hud.fouls).toBe('Fouls: 0 / 4');
 });
 
 test('the arena is a green soccer field and orbs are drawn as soccer balls', async ({ page }) => {
@@ -356,11 +418,11 @@ test('every foul plays one referee whistle, starting with the very first interac
 
   // The very first interaction on the page is itself a foul (a too-short drawing).
   await shortStroke(page);
-  expect((await snapshot(page)).hud.fouls).toBe('Fouls: 1 / 3');
+  expect((await snapshot(page)).hud.fouls).toBe('Fouls: 1 / 4');
   expect(await whistles()).toBe(1);
 
   await shortStroke(page);
-  expect((await snapshot(page)).hud.fouls).toBe('Fouls: 2 / 3');
+  expect((await snapshot(page)).hud.fouls).toBe('Fouls: 2 / 4');
   expect(await whistles()).toBe(2);
   // A foul is not a capture: no goal sound.
   expect(await page.evaluate(() => window.__goalLock?.scene.goalSoundsPlayed)).toBe(0);

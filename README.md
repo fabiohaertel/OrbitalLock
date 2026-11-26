@@ -27,9 +27,13 @@ games, but your walls can take any shape.
 - A drawing is a **foul** if it passes through a ball, or if a ball touches the
   path while you are still drawing it. The referee blows the whistle, and the
   fouls card in the HUD fills a pip.
-- **Win** by capturing every ball. **Lose** when you commit more fouls than
-  allowed (3 by default): the fouls card pulses red when the next foul would
-  end the game.
+- **Clear a level** by capturing every ball, then start the next, harder one:
+  more and faster balls, smaller nets and fewer fouls allowed. Levels never
+  end. **Lose** when you commit more fouls than the level allows (4 on level 1,
+  2 from level 8): the fouls card pulses red when the next foul would end the
+  game. Fouls reset every level; the score carries over.
+- Each ball scores 100 × the level. Clearing a level adds a bonus for the
+  level, for each unused foul and for clearing it in under 60 seconds.
 
 The full rules are in [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
 
@@ -39,15 +43,17 @@ The full rules are in [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
 - Ball physics that doesn't depend on frame rate, with ball-to-ball collisions.
   Stress-tested with dozens of fast balls and hundreds of wall segments
 - Detection of regions of any polygonal shape, with area-based capture rules
-- Configurable gameplay. Defaults: 7 balls, ball speed 250 (field units per
-  second, on a 1000 × 625 field), maximum capture area 15%, 3 fouls allowed
+- Endless levels from a difficulty table: from 3 balls at speed 220 (field
+  units per second, on a 1000 × 625 field) with a 15% maximum capture area,
+  up to 16 balls at speed 300 with 8%
 - Soccer theme: a striped green field with faint markings, shaded balls that
   roll in their direction of travel with a motion-blur trail, and goal nets
   over captured regions
-- Stadium-scoreboard HUD in the bundled Orbitron font: cards for captured and
-  remaining balls, elapsed time, score (it pops when it goes up) and fouls
-  (shown as pips), a pill restart button, and animated victory and defeat
-  screens with a final scoreboard
+- Stadium-scoreboard HUD in the bundled Orbitron font: cards for the level,
+  captured and remaining balls, the level's time, score (it pops when it goes
+  up) and fouls (shown as pips), a pill restart button, and animated
+  level-cleared (bonus breakdown, "Next level") and defeat (level reached,
+  final score and time) screens
 - Synthesized sound effects (no audio files): a soft kick on every bounce, a
   referee whistle on every foul, and a short goal jingle on every capture. The
   game runs silently if the browser has no Web Audio support
@@ -100,8 +106,9 @@ Development builds only (absent from `npm run build`):
 
 - Gameplay values can be overridden from the URL for quick balancing, e.g.
   `http://localhost:5173/?orbs=3&speed=200&seed=7`. Supported: `orbs` (number
-  of balls), `radius`, `speed`, `maxArea`, `minLength`, `maxFouls` and `seed`
-  (a reproducible ball layout).
+  of balls), `radius`, `speed`, `maxArea`, `minLength`, `maxFouls` (these
+  replace the level's values on every level), `seed` (a reproducible ball
+  layout) and `level` (start at that level).
 - `window.__goalLock` exposes the running game to the browser tests.
 
 ### Tests
@@ -126,7 +133,7 @@ src/
   audio/      synthesized sound effects: kick, whistle and goal sounds
   layout/     responsive layout, viewport watching, screen-to-field mapping
   render/     drawing the soccer field, balls, goal nets and feedback with Phaser
-  ui/         HUD scoreboard cards, buttons, victory/defeat screens, font loading
+  ui/         HUD scoreboard cards, buttons, level-cleared/defeat screens, font loading
   scenes/     Phaser scenes (glue between input, GameWorld and rendering)
   assets/     bundled Orbitron UI font (SIL Open Font License)
   main.ts     game entry point
@@ -156,12 +163,17 @@ Development follows the phases in [docs/ROADMAP.md](docs/ROADMAP.md):
 - [x] Phase 8 — Rendering, HUD and screens
 - [x] Phase 9 — Responsive layout and touch devices
 - [x] Phase 10 — Acceptance testing and hardening
+- [x] Phase 11 — Level progression decisions
+- [x] Phase 12 — Level definitions
+- [x] Phase 13 — Per-level scoring
+- [x] Phase 14 — Level progression in game logic
+- [x] Phase 15 — Level UI
+- [x] Phase 16 — Level balancing and hardening
 
 The production build uses relative asset paths and bundles its font, so it
 also runs offline and from a sub-path, such as inside itch.io's iframe.
 
-Planned for after the MVP: multiple levels, high scores, obstacles, power-ups,
-special balls, and music.
+Planned next: high scores, obstacles, power-ups, special balls, and music.
 
 ## Documentation
 

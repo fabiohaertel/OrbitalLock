@@ -25,11 +25,15 @@ export interface HudFouls extends HudStat {
 
 /** What each HUD card shows (REQUIREMENTS §5.2, §5.3). */
 export interface HudModel {
+  /** Current level (D10). */
+  readonly level: HudStat;
   readonly captured: HudStat;
   readonly remaining: HudStat;
+  /** The current level's time. */
   readonly time: HudStat;
+  /** The whole game's score. */
   readonly score: HudStat;
-  /** Failed attempts so far against the limit; defeat when exceeded (D3). */
+  /** Failed attempts so far against the level's limit; defeat when exceeded (D3). */
   readonly fouls: HudFouls;
 }
 
@@ -60,7 +64,10 @@ export function buildHudModel(
   const used = progress.failedAttempts;
   const max = config.maxFailedAttempts;
 
+  const level = String(progress.level);
+
   return {
+    level: stat('LEVEL', level, `Level: ${level}`),
     captured: stat('CAPTURED', `${captured}/${total}`, `Captured: ${captured} / ${total}`),
     remaining: stat('REMAINING', remaining, `Remaining: ${remaining}`),
     time: stat('TIME', time, `Time: ${time}`),
@@ -75,27 +82,58 @@ export function buildHudModel(
   };
 }
 
-/** Victory or defeat screen (REQUIREMENTS §3.8). */
-export interface GameOverModel {
-  readonly result: 'victory' | 'defeat';
+/** What the end-screen button does. */
+export type EndScreenAction = 'nextLevel' | 'restart';
+
+/** Level-cleared or defeat screen (REQUIREMENTS §3.8, §5.6). */
+export interface EndScreenModel {
+  readonly result: 'levelComplete' | 'defeat';
   readonly title: string;
-  /** One line under the title saying why the game ended. */
+  /** One line under the title: the bonus and new score, or why the game ended. */
   readonly subtitle: string;
-  /** Final scoreboard: score, time and captured orbs. */
+  /** Level cleared: the bonus parts (D11). Defeat: score, level reached and total time. */
   readonly stats: readonly HudStat[];
+  readonly button: { readonly label: string; readonly action: EndScreenAction };
 }
 
-/** Victory or defeat screen content; undefined while playing (REQUIREMENTS §3.8). */
-export function buildGameOverModel(progress: GameProgress): GameOverModel | undefined {
-  if (progress.status === 'playing') return undefined;
-  const time = formatElapsed(progress.elapsedSeconds);
-  const captured = `${String(progress.capturedOrbs)}/${String(progress.totalOrbs)}`;
-  const stats = [
-    stat('SCORE', String(progress.score), `Score: ${String(progress.score)}`),
-    stat('TIME', time, `Time: ${time}`),
-    stat('CAPTURED', captured, `Captured: ${String(progress.capturedOrbs)} / ${String(progress.totalOrbs)}`),
-  ];
-  return progress.status === 'victory'
-    ? { result: 'victory', title: 'VICTORY', subtitle: 'All orbs captured!', stats }
-    : { result: 'defeat', title: 'DEFEAT', subtitle: 'Too many fouls.', stats };
+function points(value: number): string {
+  return `+${String(value)}`;
+}
+
+/** Level-cleared or defeat screen content; undefined while playing (REQUIREMENTS §3.8, §5.6). */
+export function buildEndScreenModel(progress: GameProgress): EndScreenModel | undefined {
+  const level = String(progress.level);
+  const score = String(progress.score);
+
+  if (progress.status === 'levelComplete') {
+    const bonus = progress.levelBonus ?? { level: 0, fouls: 0, time: 0, total: 0 };
+    return {
+      result: 'levelComplete',
+      title: `LEVEL ${level} CLEAR`,
+      subtitle: `Bonus ${points(bonus.total)} · Score ${score}`,
+      stats: [
+        stat('LEVEL', points(bonus.level), `Level bonus: ${points(bonus.level)}`),
+        stat('FOULS', points(bonus.fouls), `Fouls bonus: ${points(bonus.fouls)}`),
+        stat('TIME', points(bonus.time), `Time bonus: ${points(bonus.time)}`),
+      ],
+      button: { label: 'NEXT LEVEL', action: 'nextLevel' },
+    };
+  }
+
+  if (progress.status === 'defeat') {
+    const time = formatElapsed(progress.totalSeconds);
+    return {
+      result: 'defeat',
+      title: 'DEFEAT',
+      subtitle: 'Too many fouls.',
+      stats: [
+        stat('SCORE', score, `Score: ${score}`),
+        stat('LEVEL', level, `Level: ${level}`),
+        stat('TIME', time, `Time: ${time}`),
+      ],
+      button: { label: 'PLAY AGAIN', action: 'restart' },
+    };
+  }
+
+  return undefined;
 }

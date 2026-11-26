@@ -5,7 +5,7 @@ import {
   recordFailedAttempt,
   advanceClock,
 } from '../../src/game/progress';
-import { MAX_FOUL_PIPS, buildGameOverModel, buildHudModel, formatElapsed } from '../../src/ui/hudModel';
+import { MAX_FOUL_PIPS, buildEndScreenModel, buildHudModel, formatElapsed } from '../../src/ui/hudModel';
 
 describe('formatElapsed', () => {
   it.each([
@@ -24,6 +24,7 @@ describe('formatElapsed', () => {
 describe('buildHudModel', () => {
   it('shows the initial state as label/value cards with plain-text equivalents', () => {
     const hud = buildHudModel(createProgress(8), { maxFailedAttempts: 3 });
+    expect(hud.level).toEqual({ label: 'LEVEL', value: '1', text: 'Level: 1' });
     expect(hud.captured).toEqual({ label: 'CAPTURED', value: '0/8', text: 'Captured: 0 / 8' });
     expect(hud.remaining).toEqual({ label: 'REMAINING', value: '8', text: 'Remaining: 8' });
     expect(hud.time).toEqual({ label: 'TIME', value: '00:00', text: 'Time: 00:00' });
@@ -40,15 +41,16 @@ describe('buildHudModel', () => {
   });
 
   it('matches the requirements example (§5.3)', () => {
-    let progress = recordCaptures(createProgress(8), 3);
+    let progress = recordCaptures(createProgress(5, 3), 3, 3);
     progress = advanceClock(progress, 42.3);
-    progress = { ...progress, score: 450 };
+    progress = { ...progress, score: 4650 };
     const hud = buildHudModel(progress, { maxFailedAttempts: 3 });
-    expect(hud.captured.value).toBe('3/8');
-    expect(hud.remaining.value).toBe('5');
+    expect(hud.level.value).toBe('3');
+    expect(hud.captured.value).toBe('3/5');
+    expect(hud.remaining.value).toBe('2');
     expect(hud.time.value).toBe('00:42');
-    expect(hud.score.value).toBe('450');
-    expect(hud.captured.text).toBe('Captured: 3 / 8');
+    expect(hud.score.value).toBe('4650');
+    expect(hud.captured.text).toBe('Captured: 3 / 5');
     expect(hud.time.text).toBe('Time: 00:42');
   });
 
@@ -85,31 +87,39 @@ describe('buildHudModel', () => {
   });
 });
 
-describe('buildGameOverModel', () => {
+describe('buildEndScreenModel', () => {
   it('is undefined while playing', () => {
-    expect(buildGameOverModel(createProgress(2))).toBeUndefined();
+    expect(buildEndScreenModel(createProgress(2))).toBeUndefined();
   });
 
-  it('describes a victory with a final scoreboard', () => {
-    const won = recordCaptures(advanceClock(createProgress(2), 75), 2);
-    const model = buildGameOverModel(won);
-    expect(model?.result).toBe('victory');
-    expect(model?.title).toBe('VICTORY');
-    expect(model?.subtitle).toBe('All orbs captured!');
+  it('shows the level-clear bonus parts and a "NEXT LEVEL" button (§5.6, D11)', () => {
+    let progress = advanceClock(createProgress(2, 3), 42.5);
+    progress = recordFailedAttempt(progress, 3);
+    progress = recordCaptures(progress, 2, 3);
+    const model = buildEndScreenModel(progress);
+    expect(model?.result).toBe('levelComplete');
+    expect(model?.title).toBe('LEVEL 3 CLEAR');
+    // 1500 + 2 × 200 + 17 × 10 = 2070; score 2 × 300 + 2070.
+    expect(model?.subtitle).toBe('Bonus +2070 · Score 2670');
     expect(model?.stats.map((stat) => [stat.label, stat.value])).toEqual([
-      ['SCORE', '200'],
-      ['TIME', '01:15'],
-      ['CAPTURED', '2/2'],
+      ['LEVEL', '+1500'],
+      ['FOULS', '+400'],
+      ['TIME', '+170'],
     ]);
+    expect(model?.button).toEqual({ label: 'NEXT LEVEL', action: 'nextLevel' });
   });
 
-  it('describes a defeat with what was captured', () => {
-    const lost = recordFailedAttempt(recordCaptures(createProgress(4), 1), 0);
-    const model = buildGameOverModel(lost);
+  it('shows a defeat with the score, level reached and total time, and "PLAY AGAIN"', () => {
+    const lost = recordFailedAttempt(recordCaptures({ ...advanceClock(createProgress(4, 2), 75), totalSeconds: 135 }, 1, 0), 0);
+    const model = buildEndScreenModel(lost);
     expect(model?.result).toBe('defeat');
     expect(model?.title).toBe('DEFEAT');
     expect(model?.subtitle).toBe('Too many fouls.');
-    expect(model?.stats.find((stat) => stat.label === 'CAPTURED')?.value).toBe('1/4');
-    expect(model?.stats.find((stat) => stat.label === 'SCORE')?.value).toBe('100');
+    expect(model?.stats.map((stat) => [stat.label, stat.value])).toEqual([
+      ['SCORE', '200'],
+      ['LEVEL', '2'],
+      ['TIME', '02:15'],
+    ]);
+    expect(model?.button).toEqual({ label: 'PLAY AGAIN', action: 'restart' });
   });
 });

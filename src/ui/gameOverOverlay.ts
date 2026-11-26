@@ -3,7 +3,7 @@ import type { Rect } from '../geometry/rect';
 import type { Vec2 } from '../geometry/vector';
 import { MIN_TOUCH_TARGET } from '../layout/screenLayout';
 import { THEME } from '../render/theme';
-import type { GameOverModel } from './hudModel';
+import type { EndScreenModel } from './hudModel';
 import { PillButton } from './pillButton';
 import { StatCard } from './statCard';
 
@@ -15,11 +15,11 @@ const STAT_COUNT = 3;
 const MIN_LABEL_FONT = 9;
 
 /**
- * Victory / defeat screen over the arena (REQUIREMENTS §3.8, §5.6): the arena
- * is dimmed and a rounded panel pops in with the result title (gold for a
- * victory, red for a defeat), a one-line reason, a small final scoreboard
- * (score, time, captured) and a "PLAY AGAIN" button. The panel scales down to
- * fit small arenas.
+ * Level-cleared / defeat screen over the arena (REQUIREMENTS §3.8, §5.6): the
+ * arena is dimmed and a rounded panel pops in with the title (gold "LEVEL N
+ * CLEAR", red "DEFEAT"), one line under it, three scoreboard cards (the bonus
+ * parts, or score, level and time) and a "NEXT LEVEL" or "PLAY AGAIN" button.
+ * The panel scales down to fit small arenas.
  */
 export class GameOverOverlay {
   private readonly scene: Phaser.Scene;
@@ -31,8 +31,15 @@ export class GameOverOverlay {
   private readonly subtitle: Phaser.GameObjects.Text;
   private readonly stats: StatCard[] = [];
   private readonly playAgainButton: PillButton;
+  private readonly nextLevelButton: PillButton;
 
-  constructor(scene: Phaser.Scene, arenaRect: Rect, pixelRatio: number, onRestart: () => void) {
+  constructor(
+    scene: Phaser.Scene,
+    arenaRect: Rect,
+    pixelRatio: number,
+    onRestart: () => void,
+    onNextLevel: () => void,
+  ) {
     this.scene = scene;
     this.backdrop = scene.add.rectangle(0, 0, 1, 1, THEME.overlay, THEME.overlayAlpha);
     this.panelBackground = scene.add.graphics();
@@ -46,6 +53,7 @@ export class GameOverOverlay {
       this.stats.push(new StatCard(scene, { accent: i === 0 ? THEME.accentScore : THEME.accentNeutral }));
     }
     this.playAgainButton = new PillButton(scene, 'PLAY AGAIN', onRestart, { restartIcon: true });
+    this.nextLevelButton = new PillButton(scene, 'NEXT LEVEL', onNextLevel);
 
     this.panel = scene.add.container(0, 0, [
       this.panelBackground,
@@ -53,6 +61,7 @@ export class GameOverOverlay {
       this.subtitle,
       ...this.stats.map((card) => card.container),
       this.playAgainButton.container,
+      this.nextLevelButton.container,
     ]);
     this.container = scene.add.container(0, 0, [this.backdrop, this.panel]).setDepth(10).setVisible(false);
     this.applyLayout(arenaRect, pixelRatio);
@@ -102,22 +111,27 @@ export class GameOverOverlay {
 
     const buttonWidth = 176 * s;
     const buttonHeight = Math.max(40 * s, MIN_TOUCH_TARGET * r);
-    this.playAgainButton.place(
-      { x: -buttonWidth / 2, y: top + 172 * s, width: buttonWidth, height: buttonHeight },
-      Math.max(14 * s, 12 * r),
-      r,
-    );
+    for (const button of [this.playAgainButton, this.nextLevelButton]) {
+      button.place(
+        { x: -buttonWidth / 2, y: top + 172 * s, width: buttonWidth, height: buttonHeight },
+        Math.max(14 * s, 12 * r),
+        r,
+      );
+    }
   }
 
   /** Shows the screen for `model`, or hides it when undefined. */
-  update(model: GameOverModel | undefined): void {
+  update(model: EndScreenModel | undefined): void {
     if (model === undefined) {
       if (this.container.visible) this.container.setVisible(false);
       return;
     }
     if (this.title.text !== model.title) {
-      this.title.setText(model.title).setColor(model.result === 'victory' ? THEME.victory : THEME.defeat);
+      this.title.setText(model.title).setColor(model.result === 'levelComplete' ? THEME.victory : THEME.defeat);
     }
+    // Only the button for this screen is visible, so only it can be pressed.
+    this.playAgainButton.container.setVisible(model.button.action === 'restart');
+    this.nextLevelButton.container.setVisible(model.button.action === 'nextLevel');
     if (this.subtitle.text !== model.subtitle) this.subtitle.setText(model.subtitle);
     model.stats.forEach((stat, i) => this.stats[i]?.set(stat));
     if (!this.container.visible) this.show();
@@ -143,5 +157,10 @@ export class GameOverOverlay {
   /** Canvas-space center of the "PLAY AGAIN" button, for tests. */
   get playAgainCenter(): Vec2 {
     return this.playAgainButton.center;
+  }
+
+  /** Canvas-space center of the "NEXT LEVEL" button, for tests. */
+  get nextLevelCenter(): Vec2 {
+    return this.nextLevelButton.center;
   }
 }

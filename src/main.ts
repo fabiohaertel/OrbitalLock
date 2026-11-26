@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { parseDevOverrides } from './config/devOverrides';
 import { ARENA, createGameplayConfig, type GameplayConfig } from './config/gameConfig';
+import { levelConfig } from './game/levels';
 import { computeLayout } from './layout/screenLayout';
 import { readViewport, watchViewport } from './layout/viewport';
 import { THEME } from './render/theme';
@@ -11,7 +12,7 @@ import { installTestHook } from './testHook';
 import { loadUiFonts } from './ui/fonts';
 import { GameWorld } from './world/gameWorld';
 
-// Development builds accept URL overrides (e.g. `?orbs=1&speed=20&seed=7`) for balancing and tests.
+// Development builds accept URL overrides (e.g. `?orbs=1&speed=20&seed=7&level=3`) for balancing and tests.
 const overrides = import.meta.env.DEV ? parseDevOverrides(window.location.search) : undefined;
 const config: GameplayConfig = createGameplayConfig(overrides?.config);
 const seed = overrides?.seed;
@@ -19,6 +20,9 @@ const seed = overrides?.seed;
 const world = new GameWorld({
   config,
   arena: ARENA,
+  // Each level comes from the level table (D10); development overrides win on every level.
+  levelConfig: (level, base) => createGameplayConfig({ ...levelConfig(level, base), ...overrides?.config }),
+  firstLevel: overrides?.level,
   spawnOrbs:
     seed === undefined ? undefined : (cfg, arena) => createOrbs(cfg, arena, createSeededRandom(seed)),
 });

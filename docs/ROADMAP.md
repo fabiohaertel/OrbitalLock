@@ -1,8 +1,8 @@
 # Goal Lock — Implementation Roadmap
 
 This roadmap breaks the MVP defined in [REQUIREMENTS.md](REQUIREMENTS.md) into
-phases. The requirements remain the source of truth; if this roadmap conflicts
-with them, follow the requirements. Design decisions D1–D7 are in
+phases (0–10), followed by level progression (11–16). The requirements remain the source of truth; if this roadmap conflicts
+with them, follow the requirements. Design decisions D1–D11 are in
 [REQUIREMENTS.md §11.1](REQUIREMENTS.md#111-resolved-decisions).
 
 ## How to use this roadmap
@@ -29,6 +29,12 @@ with them, follow the requirements. Design decisions D1–D7 are in
 | 8 | Rendering, HUD and screens | ✅ Done (2026-11-24) | Playable on desktop; fixed HUD-above-arena layout (responsive layout is Phase 9); Playwright e2e in `e2e/`; dev-only URL overrides and test hook |
 | 9 | Responsive layout and devices | ✅ Done (2026-11-24) | `computeLayout` picks HUD top/side; canvas at device resolution (ratio capped at 2); touch gestures blocked; e2e covers resize, rotation, touch drawing and mobile viewports (Chromium emulation only, not real devices) |
 | 10 | Acceptance and hardening | ✅ Done (2026-11-25) | Every §9 row covered (headless + Playwright); seeded stress test and frame-budget check; fixes: right-click release no longer ends a drawing, orb–wall bounding-box early-out (~8× faster physics with many walls); mobile profiled with CPU throttling in emulation only, not on real devices |
+| 11 | Level progression decisions | ✅ Done (2026-11-25) | D10 (levels) and D11 (scoring) in REQUIREMENTS, replacing D7 and D9; time bonus counts whole seconds under 60 s |
+| 12 | Level definitions | ✅ Done (2026-11-25) | `src/game/levels.ts`; invalid levels throw `RangeError`; not yet used by `GameWorld` (Phase 14), and URL dev overrides of the four level values will be overwritten by the level once it is (decide in Phase 15) |
+| 13 | Per-level scoring | ✅ Done (2026-11-25) | `src/game/scoring.ts`; `POINTS_PER_CAPTURED_ORB` removed, `recordCaptures` scores as level 1 until Phase 14; level-clear bonus not applied yet (Phase 14) |
+| 14 | Level progression in game logic | ✅ Done (2026-11-25) | `GameWorld.nextLevel()`, per-level `config`, `levelComplete` event; `GameProgress` has level and game totals; headless tests play levels 1 → 3 |
+| 15 | Level UI | ✅ Done (2026-11-25) | LEVEL card (6 HUD cards; side cards 30 px); level-cleared and defeat panels; `?level=N`; URL config overrides win on every level; e2e covers next level, defeat on level 2 and the level table |
+| 16 | Level balancing and hardening | ✅ Done (2026-11-25) | Stress test at the hardest level (16 orbs, 300 units/s, 8%) and the 60-orb frame budget pass; the initial D10 table and D11 bonuses were approved as final without changes |
 
 ## Architecture
 
@@ -69,6 +75,15 @@ units, `src/config/gameConfig.ts`), per D6.
 
 Phases 2 and 3 can run in parallel. Rendering (8) grows alongside the other
 phases so each mechanic can be checked visually as soon as it exists.
+
+Level progression (after the MVP):
+
+```text
+11 ─┬─► 12 ─┐
+    └─► 13 ─┴─► 14 ─► 15 ─► 16
+```
+
+Phases 12 and 13 can run in parallel.
 
 ## Phases
 
@@ -210,6 +225,157 @@ phases so each mechanic can be checked visually as soon as it exists.
 - **Tests:** regression tests for every edge case found; performance check of a
   frame with many orbs and walls.
 - **Done when:** every row of §9 passes.
+
+## Level progression (Phases 11–16)
+
+Clearing a level leads to the next, harder one, until the player loses. These
+phases replace the single-level MVP (D7) and the placeholder scoring (D9).
+
+### Agreed rules (REQUIREMENTS D10)
+
+- **Endless:** levels continue until defeat. After the last table level,
+  difficulty grows by formula up to its caps, then stays there.
+- **Level cleared:** the simulation stops and a "LEVEL N CLEAR" panel shows the
+  bonuses and a "NEXT LEVEL" button. No automatic advance.
+- **New level:** the arena is cleared (no walls or nets); new orbs are spawned
+  from the level's config.
+- **Fouls reset every level.** The limit may change per level. Defeat is still
+  exceeding the limit (D3), now within the current level.
+- **Score accumulates** across levels. The HUD shows the level's time; the
+  defeat screen shows the total time.
+- **Defeat** shows the level reached, total score and total time. "PLAY AGAIN"
+  goes back to level 1 with the score reset.
+- **HUD restart** restarts the whole game (level 1). There is no
+  "restart this level".
+
+### Difficulty curve (REQUIREMENTS D10; final values, approved in Phase 16)
+
+Uses the existing `GameplayConfig` levers only. `orbRadius` stays at 12.
+
+| Level | Orbs | Speed | Max area | Fouls |
+| --- | --- | --- | --- | --- |
+| 1 | 3 | 220 | 15% | 4 |
+| 2 | 4 | 230 | 15% | 4 |
+| 3 | 5 | 240 | 14% | 3 |
+| 4 | 6 | 250 | 13% | 3 |
+| 5 | 7 | 250 | 12% | 3 |
+| 6 | 8 | 260 | 11% | 3 |
+| 7 | 9 | 270 | 10% | 3 |
+| 8 | 10 | 280 | 10% | 2 |
+| 9 | 11 | 290 | 9% | 2 |
+| 10 | 12 | 300 | 8% | 2 |
+| 11+ | +1 per level, cap 16 | 300 (cap) | 8% (floor) | 2 |
+
+Speed is capped at 300 because playtesting found 320 too fast (§4). The orb cap
+of 16 keeps spawning reliable and stays well inside the Phase 10 stress test
+(60 orbs).
+
+### Scoring (REQUIREMENTS D11, replaces D9)
+
+- **Capture:** `100 × level` points per orb.
+- **Level-clear bonus:** `500 × level` + `200 × unused fouls` +
+  `10 × floor(max(0, 60 − level seconds))`.
+- The "LEVEL CLEAR" panel lists each bonus and the total added to the score.
+
+### Phase 11 — Level progression decisions ✅
+
+- **Scope:** documentation only. In REQUIREMENTS: mark D7 as replaced by
+  **D10 — Level progression** (rules above) and D9 by **D11 — Per-level
+  scoring**; update §3.8 (level cleared instead of victory; level-clear and
+  defeat screens), §4 (per-level values come from the level table; current
+  values become the base config), §5.2/§5.3 (LEVEL card), §5.6 (level-clear
+  panel), §8.4 (level progression), §9 (new acceptance rows, see Phase 15) and
+  §10 (remove "Multiple levels with increasing difficulty").
+- **Depends on:** 10
+- **Done when:** REQUIREMENTS and this roadmap agree, and no open decision
+  remains for Phases 12–16.
+
+### Phase 12 — Level definitions ✅
+
+- **Scope:** new `src/game/levels.ts` (pure): `LevelDefinition` (level, orb
+  count, speed, max capture area, max fouls), `LEVEL_TABLE` for levels 1–10,
+  `levelDefinition(level)` applying the formula and caps after the table, and
+  `levelConfig(level, base)` returning a config validated by
+  `createGameplayConfig`.
+- **Depends on:** 11
+- **Unit tests:** table values; formula after level 10; caps and floors hold at
+  very high levels; invalid levels (0, negative, non-integer) rejected; every
+  level's config is valid; `createOrbs` always places 16 orbs.
+- **Done when:** any level number maps to a valid, deterministic config.
+
+### Phase 13 — Per-level scoring ✅
+
+- **Scope:** new `src/game/scoring.ts` (pure): `captureScore(count, level)` and
+  `levelClearBonus({ level, foulsLeft, levelSeconds })` returning each part and
+  the total. Replaces `POINTS_PER_CAPTURED_ORB`.
+- **Depends on:** 11
+- **Unit tests:** capture score scales with level; each bonus part; time bonus
+  is zero after 60 s and never negative; no fouls left gives no foul bonus.
+- **Done when:** D11 is implemented and covered.
+
+### Phase 14 — Level progression in game logic ✅
+
+- **Scope:** `src/game/progress.ts`: status becomes `playing | levelComplete |
+  defeat`; progress gains `level`, `totalScore` and `totalSeconds`; clearing
+  all orbs applies the level-clear bonus; `startLevel` resets the level's
+  counters and keeps the totals. `src/world/gameWorld.ts`: `config` is the
+  current level's config; `restart()` goes back to level 1; new `nextLevel()`
+  (only when the level is complete) clears walls and regions, recreates the wall
+  builder and timestep and spawns the new level's orbs; `levelComplete` and
+  `gameOver` (defeat) events. Still no UI.
+- **Depends on:** 12, 13
+- **Unit tests:** capturing every orb → `levelComplete` with the bonus;
+  `nextLevel` ignored while playing or after defeat; fouls reset per level;
+  score and total time accumulate; defeat on level N keeps N; restart restores
+  level 1 exactly.
+- **Integration tests:** headless run through levels 1 → 3 with seeded orbs;
+  arena empty and new config applied after each `nextLevel`.
+- **Done when:** D10 rules hold without a browser.
+
+### Phase 15 — Level UI ✅
+
+- **Scope:** LEVEL card in the HUD in all three layouts (bar, rows, side
+  column); level-clear panel ("LEVEL N CLEAR", bonus breakdown, "NEXT LEVEL"
+  button) reusing `GameOverOverlay`, `StatCard` and `PillButton`; defeat panel
+  with level reached, total score and total time; the scene's panel button calls
+  `nextLevel()` or `restart()`; the goal sound also marks the level clear (no
+  new sound). Dev override `?level=N` and test-hook access to the level.
+- **Depends on:** 14
+- **Unit tests:** HUD and panel models for level clear and defeat.
+- **E2E tests (Playwright):** clear a level → panel with bonuses; "NEXT LEVEL"
+  → empty arena, level N+1, fouls reset, score kept; defeat on level N shows N;
+  restart and "PLAY AGAIN" → level 1, score 0; LEVEL card visible on desktop and
+  mobile without horizontal scroll.
+- **Done when:** the new §9 rows pass.
+
+### Phase 16 — Level balancing and hardening ✅
+
+- **Scope:** playtest levels 1–12 and tune the table, caps and bonuses; stress
+  and frame-budget check at the cap level (16 orbs, 300 units/s, small max
+  area); record the final values in REQUIREMENTS §4 and this roadmap.
+- **Depends on:** 15
+- **Tests:** regression tests for any edge case found; performance check at the
+  cap level.
+- **Done when:** the curve is tuned and documented, and every §9 row passes.
+- **Status (2026-11-25):**
+  - Done: a stress test at the hardest level (`levelConfig(1000)`: 16 orbs,
+    300 units/s, 8% area; three seeds, 60 s each) in
+    `tests/world/gameWorld.stress.test.ts`. The existing frame-budget check
+    (60 orbs, ~1,000 wall segments) already covers more than the hardest level.
+    Every §9 row passes (unit and Playwright).
+  - Balancing: the initial D10 table and D11 bonuses were reviewed and
+    approved as final, with no changes. REQUIREMENTS §4, D10 and D11 record
+    them as final. Later tuning can use `npm run dev` with `?level=N`.
+
+### Later candidates (not scheduled)
+
+Each needs its own decision in REQUIREMENTS before it becomes a phase:
+
+- Local best score and highest level in `localStorage` (§10 "High scores").
+- Level intro: "LEVEL N" and a kickoff whistle before the orbs start moving.
+- Orbs of different sizes and speeds from a given level (§10).
+- Fixed obstacles (pre-built walls) on some levels (§10).
+- Time limit per level (§10).
 
 ## Main technical challenges
 

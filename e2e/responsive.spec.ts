@@ -214,7 +214,7 @@ test.describe('mobile (Pixel 7, touch)', () => {
     }
     await touchDrag(page, points);
 
-    await expect.poll(() => page.evaluate(() => window.__goalLock?.world.status)).toBe('victory');
+    await expect.poll(() => page.evaluate(() => window.__goalLock?.world.status)).toBe('levelComplete');
     const walls = await page.evaluate(() => window.__goalLock?.world.walls.length);
     expect(walls).toBe(1);
   });

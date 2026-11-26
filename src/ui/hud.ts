@@ -7,9 +7,10 @@ import { PillButton } from './pillButton';
 import { StatCard } from './statCard';
 
 type HudField = keyof HudModel;
-const FIELDS: readonly HudField[] = ['captured', 'remaining', 'time', 'score', 'fouls'];
+const FIELDS: readonly HudField[] = ['level', 'captured', 'remaining', 'time', 'score', 'fouls'];
 
 const ACCENTS: Record<HudField, string> = {
+  level: THEME.accentNeutral,
   captured: THEME.accentCaptured,
   remaining: THEME.accentNeutral,
   time: THEME.accentNeutral,
@@ -19,7 +20,7 @@ const ACCENTS: Record<HudField, string> = {
 
 /**
  * HUD (REQUIREMENTS §5.3, §5.6): the "GOAL LOCK" title, one scoreboard
- * card per field (captured, remaining, time, score, fouls) and the restart
+ * card per field (level, captured, remaining, time, score, fouls) and the restart
  * button. Positions and sizes come from the screen layout and are re-applied
  * on every resize; the HUD never overlaps the arena.
  */

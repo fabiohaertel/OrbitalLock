@@ -15,8 +15,8 @@ export interface Viewport {
 /** Where the HUD sits relative to the arena (REQUIREMENTS §11.1, D6). */
 export type HudPlacement = 'top' | 'side';
 
-/** Number of HUD fields (captured, remaining, time, score, fouls). */
-export const HUD_FIELD_COUNT = 5;
+/** Number of HUD fields (level, captured, remaining, time, score, fouls). */
+export const HUD_FIELD_COUNT = 6;
 
 /**
  * How a scoreboard card arranges its label and value: label above a large
@@ -71,8 +71,9 @@ const BUTTON_HEIGHT = MIN_TOUCH_TARGET;
 const HEADER_HEIGHT = PADDING + BUTTON_HEIGHT;
 const SIDE_WIDTH = 184;
 const SIDE_TITLE_HEIGHT = 32;
-const SIDE_CARD_HEIGHT = 34;
-const SIDE_CARD_GAP = 6;
+// Six cards still fit a 320-pixel-tall landscape phone in the side column.
+const SIDE_CARD_HEIGHT = 30;
+const SIDE_CARD_GAP = 4;
 const SIDE_CARDS_HEIGHT = HUD_FIELD_COUNT * SIDE_CARD_HEIGHT + (HUD_FIELD_COUNT - 1) * SIDE_CARD_GAP;
 const SIDE_MIN_HEIGHT = PADDING + SIDE_TITLE_HEIGHT + GAP + SIDE_CARDS_HEIGHT + GAP + BUTTON_HEIGHT + PADDING;
 const CORNER_RADIUS = 8;
@@ -86,7 +87,7 @@ const SINGLE_ROW_MIN_WIDTH =
  * - The arena keeps its aspect ratio and is scaled as large as possible.
  * - The HUD goes on top, or in a side column when that leaves a larger arena
  *   (typically landscape phones). It never overlaps the arena.
- * - On top, the title, the five scoreboard cards and the restart button share
+ * - On top, the title, the six scoreboard cards and the restart button share
  *   one bar when they fit. Otherwise a header holds the title and the button,
  *   and the cards wrap into rows below it.
  * - Everything fits inside the viewport, so there is no scrolling.

@@ -3,14 +3,17 @@ import { ARENA, DEFAULT_GAMEPLAY_CONFIG, type ArenaDimensions, type GameplayConf
 import type { PointerInput } from '../drawing/drawingSession';
 import { wallSegments, type Wall } from '../drawing/wall';
 import { WallBuilder, createWallBuilderOptions, type WallBuildOutcome } from '../drawing/wallBuilder';
+import { FIRST_LEVEL, levelConfig } from '../game/levels';
 import {
   advanceClock,
   createProgress,
   recordCaptures,
   recordFailedAttempt,
+  startLevel,
   type GameProgress,
   type GameStatus,
 } from '../game/progress';
+import type { LevelClearBonus } from '../game/scoring';
 import type { Region } from '../geometry/regions';
 import type { Segment } from '../geometry/segment';
 import type { Vec2 } from '../geometry/vector';
@@ -28,14 +31,25 @@ export type GameEvent =
   | { readonly kind: 'attemptFailed'; readonly attempt: FailedAttempt }
   /** An orb bounced off the arena, a wall or another orb (REQUIREMENTS §5.5). */
   | { readonly kind: 'collision'; readonly collision: OrbCollision }
-  | { readonly kind: 'gameOver'; readonly status: Exclude<GameStatus, 'playing'> };
+  /** Every orb of the level was captured; the next level waits for `nextLevel()` (D10). */
+  | { readonly kind: 'levelComplete'; readonly level: number; readonly bonus: LevelClearBonus }
+  | { readonly kind: 'gameOver'; readonly status: 'defeat' };
+
+/** Gameplay config of one level, built from the base config (REQUIREMENTS §4, D10). */
+export type LevelConfigSource = (level: number, base: GameplayConfig) => GameplayConfig;
 
 export interface GameWorldOptions {
+  /** Base config; each level's config is built from it (REQUIREMENTS §4). */
   readonly config?: GameplayConfig;
   readonly arena?: ArenaDimensions;
+  /** Config of each level. Defaults to the level table (`levelConfig`, D10). */
+  readonly levelConfig?: LevelConfigSource;
+  /** Level a new game starts at. Defaults to `FIRST_LEVEL`; other values are for development. */
+  readonly firstLevel?: number;
   /**
-   * Creates the orbs for a new game. Called on construction and on every
-   * restart. Defaults to `config.initialOrbCount` orbs at random positions.
+   * Creates the orbs for a level, from that level's config. Called on
+   * construction, on every restart and on every new level. Defaults to
+   * `config.initialOrbCount` orbs at random positions.
    */
   readonly spawnOrbs?: (config: GameplayConfig, arena: ArenaDimensions) => Orb[];
 }
@@ -46,10 +60,14 @@ export interface GameWorldOptions {
  * input to it and draw its state.
  */
 export class GameWorld {
-  readonly config: GameplayConfig;
+  /** Base config; `config` is the current level's. */
+  readonly baseConfig: GameplayConfig;
   readonly arena: ArenaDimensions;
+  private readonly configForLevel: LevelConfigSource;
+  private readonly firstLevel: number;
   private readonly spawnOrbs: (config: GameplayConfig, arena: ArenaDimensions) => Orb[];
 
+  private currentConfig!: GameplayConfig;
   private orbList: Orb[] = [];
   private wallList: Wall[] = [];
   private segments: Segment[] = [];
@@ -59,10 +77,21 @@ export class GameWorld {
   private state!: GameProgress;
 
   constructor(options: GameWorldOptions = {}) {
-    this.config = options.config ?? DEFAULT_GAMEPLAY_CONFIG;
+    this.baseConfig = options.config ?? DEFAULT_GAMEPLAY_CONFIG;
     this.arena = options.arena ?? ARENA;
+    this.configForLevel = options.levelConfig ?? ((level, base) => levelConfig(level, base, this.arena));
+    this.firstLevel = options.firstLevel ?? FIRST_LEVEL;
     this.spawnOrbs = options.spawnOrbs ?? ((config, arena) => createOrbs(config, arena));
     this.restart();
+  }
+
+  /** Config of the current level (D10). */
+  get config(): GameplayConfig {
+    return this.currentConfig;
+  }
+
+  get level(): number {
+    return this.state.level;
   }
 
   get progress(): GameProgress {
@@ -95,21 +124,41 @@ export class GameWorld {
     return this.builder.previewPath;
   }
 
-  /** Restores the initial game state (REQUIREMENTS §3.8 "restart"). */
+  /** Starts a new game at the first level with a score of 0 (REQUIREMENTS §3.8 "restart", D10). */
   restart(): void {
-    this.orbList = this.spawnOrbs(this.config, this.arena);
+    this.setUpLevel(this.firstLevel);
+    this.state = createProgress(this.orbList.length, this.firstLevel);
+  }
+
+  /**
+   * Starts the next level after the current one was cleared: an empty arena,
+   * new orbs and the next level's config. Fouls and the level clock reset; the
+   * score and total time are kept (D10). Does nothing unless the level is
+   * complete. Returns whether a new level started.
+   */
+  nextLevel(): boolean {
+    if (this.state.status !== 'levelComplete') return false;
+    const level = this.state.level + 1;
+    this.setUpLevel(level);
+    this.state = startLevel(this.state, level, this.orbList.length);
+    return true;
+  }
+
+  /** Clears the arena and spawns `level`'s orbs; the caller sets the progress. */
+  private setUpLevel(level: number): void {
+    this.currentConfig = this.configForLevel(level, this.baseConfig);
+    this.orbList = this.spawnOrbs(this.currentConfig, this.arena);
     this.wallList = [];
     this.segments = [];
     this.captured = [];
-    this.builder = new WallBuilder(this.arena, createWallBuilderOptions(this.config));
+    this.builder = new WallBuilder(this.arena, createWallBuilderOptions(this.currentConfig));
     this.timestep = new FixedTimestep();
-    this.state = createProgress(this.orbList.length);
   }
 
   /**
    * Advances the simulation by one frame. Physics, the drawing-contact check
    * and the clock all run in fixed steps, so results do not depend on frame
-   * rate. Nothing moves once the game is over.
+   * rate. Nothing moves once the level is cleared or the game is lost.
    */
   update(frameSeconds: number): GameEvent[] {
     const events: GameEvent[] = [];
@@ -168,7 +217,7 @@ export class GameWorld {
       this.segments = wallSegments(this.wallList);
       const capture = resolveCaptures(this.arena, this.wallList, outcome.wall.id, this.orbList, this.config);
       this.captured = [...this.captured, ...capture.capturedRegions];
-      this.state = recordCaptures(this.state, capture.capturedOrbIds.length);
+      this.state = recordCaptures(this.state, capture.capturedOrbIds.length, this.config.maxFailedAttempts);
       events.push({ kind: 'wallCreated', wall: outcome.wall, capture });
     } else {
       // Every rejected or canceled drawing is a failed attempt (D3). A valid wall
@@ -177,10 +226,13 @@ export class GameWorld {
       events.push({ kind: 'attemptFailed', attempt: outcome });
     }
 
-    if (this.state.status !== 'playing') {
-      // Also drops a press that has not started drawing yet.
-      this.builder.cancelInput();
-      events.push({ kind: 'gameOver', status: this.state.status });
+    if (this.state.status === 'playing') return;
+    // Also drops a press that has not started drawing yet.
+    this.builder.cancelInput();
+    if (this.state.status === 'levelComplete' && this.state.levelBonus !== undefined) {
+      events.push({ kind: 'levelComplete', level: this.state.level, bonus: this.state.levelBonus });
+    } else if (this.state.status === 'defeat') {
+      events.push({ kind: 'gameOver', status: 'defeat' });
     }
   }
 }

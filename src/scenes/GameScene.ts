@@ -12,7 +12,7 @@ import { FailureFlash } from '../render/failureFlash';
 import { WorldRenderer } from '../render/worldRenderer';
 import { GameOverOverlay } from '../ui/gameOverOverlay';
 import { Hud } from '../ui/hud';
-import { buildGameOverModel, buildHudModel } from '../ui/hudModel';
+import { buildEndScreenModel, buildHudModel } from '../ui/hudModel';
 import type { GameEvent, GameWorld } from '../world/gameWorld';
 
 export const GAME_SCENE_KEY = 'GameScene';
@@ -85,9 +85,17 @@ export class GameScene extends Phaser.Scene {
     this.hud = new Hud(this, hud, pixelRatio, () => {
       this.restart();
     });
-    this.overlay = new GameOverOverlay(this, arenaRect, pixelRatio, () => {
-      this.restart();
-    });
+    this.overlay = new GameOverOverlay(
+      this,
+      arenaRect,
+      pixelRatio,
+      () => {
+        this.restart();
+      },
+      () => {
+        this.nextLevel();
+      },
+    );
     this.created = true;
 
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
@@ -153,15 +161,23 @@ export class GameScene extends Phaser.Scene {
   }
 
   /** Canvas-space centers of the HUD restart and overlay buttons, for tests. */
-  get buttonCenters(): { readonly restart: Vec2; readonly playAgain: Vec2 } {
+  get buttonCenters(): { readonly restart: Vec2; readonly playAgain: Vec2; readonly nextLevel: Vec2 } {
     return {
       restart: this.hud.restartCenter,
       playAgain: this.overlay.playAgainCenter,
+      nextLevel: this.overlay.nextLevelCenter,
     };
   }
 
   private restart(): void {
     this.world.restart();
+    this.flash.clear();
+    this.redraw();
+  }
+
+  /** Starts the next level from the level-cleared screen (D10). */
+  private nextLevel(): void {
+    if (!this.world.nextLevel()) return;
     this.flash.clear();
     this.redraw();
   }
@@ -205,6 +221,6 @@ export class GameScene extends Phaser.Scene {
       failureAlpha: this.flash.alpha,
     });
     this.hud.update(buildHudModel(this.world.progress, this.world.config), this.time.now);
-    this.overlay.update(buildGameOverModel(this.world.progress));
+    this.overlay.update(buildEndScreenModel(this.world.progress));
   }
 }

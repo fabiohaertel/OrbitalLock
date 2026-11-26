@@ -6,6 +6,8 @@
 import { describe, expect, it } from 'vitest';
 import { ARENA, DEFAULT_GAMEPLAY_CONFIG, type GameplayConfig } from '../../src/config/gameConfig';
 import type { PointerInput } from '../../src/drawing/drawingSession';
+import { levelConfig } from '../../src/game/levels';
+import { createProgress } from '../../src/game/progress';
 import type { Orb } from '../../src/physics/orb';
 import { createSeededRandom } from '../../src/physics/random';
 import { createOrbs } from '../../src/physics/spawn';
@@ -16,9 +18,16 @@ function input(x: number, y: number, pointerId = 1): PointerInput {
   return { pointerId, position: { x, y }, isPrimary: true };
 }
 
-/** World with hand-placed orbs (fresh copies on every restart). */
+/** Every level uses the given config as is, so a scenario's limits do not change with the level. */
+const sameConfigEveryLevel = (_level: number, base: GameplayConfig): GameplayConfig => base;
+
+/** World with hand-placed orbs (fresh copies on every restart and level). */
 function worldWith(orbs: () => Orb[], config: Partial<GameplayConfig> = {}): GameWorld {
-  return new GameWorld({ config: { ...DEFAULT_GAMEPLAY_CONFIG, ...config }, spawnOrbs: orbs });
+  return new GameWorld({
+    config: { ...DEFAULT_GAMEPLAY_CONFIG, ...config },
+    levelConfig: sameConfigEveryLevel,
+    spawnOrbs: orbs,
+  });
 }
 
 /** Draws through the points (closing back to the start when `closed`) with no time passing. */
@@ -138,16 +147,19 @@ describe('§9 acceptance (headless)', () => {
     expect(world.progress.failedAttempts).toBe(1);
   });
 
-  it('Capture all orbs → victory is triggered', () => {
+  it('Capture all orbs of a level → the level is cleared with its bonus', () => {
     const world = worldWith(() => [makeOrb(200, 200, 0, 0, 12), makeOrb(700, 400, 0, 0, 12)]);
-    expect(draw(world, square(150, 150, 100), true).some((e) => e.kind === 'gameOver')).toBe(false);
+    expect(draw(world, square(150, 150, 100), true).some((e) => e.kind === 'levelComplete')).toBe(false);
     const events = draw(world, square(650, 350, 100), true);
 
-    expect(events.at(-1)).toEqual({ kind: 'gameOver', status: 'victory' });
-    expect(world.status).toBe('victory');
-    expect(world.progress.score).toBe(200);
+    // Level 1, no fouls used of 3, no time passed: 500 + 3 × 200 + 60 × 10 (D11).
+    const bonus = { level: 500, fouls: 600, time: 600, total: 1700 };
+    expect(events.at(-1)).toEqual({ kind: 'levelComplete', level: 1, bonus });
+    expect(world.status).toBe('levelComplete');
+    expect(world.progress.levelBonus).toEqual(bonus);
+    expect(world.progress.score).toBe(200 + 1700);
 
-    // Game over: the clock stops and input is ignored.
+    // Level cleared: the clock stops and input is ignored until the next level.
     const time = world.progress.elapsedSeconds;
     run(world, 1);
     expect(world.progress.elapsedSeconds).toBe(time);
@@ -275,8 +287,11 @@ describe('GameWorld details', () => {
     expect(at30.orbs[0]?.position.x).toBeCloseTo(at144.orbs[0]?.position.x ?? Number.NaN, 6);
   });
 
-  it('uses the configured number of orbs by default', () => {
-    const world = new GameWorld({ config: { ...DEFAULT_GAMEPLAY_CONFIG, initialOrbCount: 4 } });
+  it("uses the level config's number of orbs by default", () => {
+    const world = new GameWorld({
+      config: { ...DEFAULT_GAMEPLAY_CONFIG, initialOrbCount: 4 },
+      levelConfig: sameConfigEveryLevel,
+    });
     expect(world.orbs).toHaveLength(4);
     expect(world.progress.totalOrbs).toBe(4);
   });
@@ -328,5 +343,127 @@ describe('collision events (REQUIREMENTS §5.5)', () => {
     foulDrawing(world);
     expect(world.status).toBe('defeat');
     expect(run(world, 1)).toEqual([]);
+  });
+});
+
+describe('level progression (D10)', () => {
+  /** `config.initialOrbCount` still orbs in a row, so each can be captured by a small square. */
+  const rowOfOrbs = (config: GameplayConfig): Orb[] =>
+    Array.from({ length: config.initialOrbCount }, (_, i) => makeOrb(60 + i * 58, 200, 0, 0, 12));
+
+  /** Captures every orb of the level, one small square each. */
+  function clearLevel(world: GameWorld): GameEvent[] {
+    return world.orbs.flatMap((orb) => draw(world, square(orb.position.x - 25, orb.position.y - 25, 50), true));
+  }
+
+  it('ignores nextLevel while playing and after a defeat', () => {
+    const world = worldWith(() => [makeOrb(800, 500, 0, 0, 12)], { maxFailedAttempts: 0 });
+    expect(world.nextLevel()).toBe(false);
+    expect(world.level).toBe(1);
+    foulDrawing(world);
+    expect(world.status).toBe('defeat');
+    expect(world.nextLevel()).toBe(false);
+    expect(world.level).toBe(1);
+  });
+
+  it("starts the next level with an empty arena and that level's config", () => {
+    const world = new GameWorld({ spawnOrbs: rowOfOrbs });
+    expect(world.level).toBe(1);
+    expect(world.config).toEqual(levelConfig(1, DEFAULT_GAMEPLAY_CONFIG));
+    expect(world.orbs).toHaveLength(3);
+
+    foulDrawing(world);
+    run(world, 2);
+    clearLevel(world);
+    expect(world.status).toBe('levelComplete');
+    const cleared = world.progress;
+
+    expect(world.nextLevel()).toBe(true);
+    expect(world.status).toBe('playing');
+    expect(world.level).toBe(2);
+    expect(world.config).toEqual(levelConfig(2, DEFAULT_GAMEPLAY_CONFIG));
+    expect(world.orbs).toHaveLength(4);
+    expect(world.orbs.every((orb) => orb.capture === 'active')).toBe(true);
+    expect(world.walls).toEqual([]);
+    expect(world.capturedRegions).toEqual([]);
+    expect(world.isDrawing).toBe(false);
+    expect(world.progress).toEqual({
+      status: 'playing',
+      level: 2,
+      totalOrbs: 4,
+      capturedOrbs: 0,
+      failedAttempts: 0,
+      score: cleared.score,
+      elapsedSeconds: 0,
+      totalSeconds: cleared.totalSeconds,
+      levelBonus: undefined,
+    });
+    // Only once per cleared level.
+    expect(world.nextLevel()).toBe(false);
+    expect(world.level).toBe(2);
+  });
+
+  it('plays through levels 1 → 3, accumulating score and total time', () => {
+    const world = new GameWorld({ spawnOrbs: rowOfOrbs });
+    let expectedScore = 0;
+    for (let level = 1; level <= 3; level++) {
+      expect(world.level).toBe(level);
+      expect(world.orbs).toHaveLength(levelConfig(level, DEFAULT_GAMEPLAY_CONFIG).initialOrbCount);
+      run(world, 70); // past the time bonus
+      const done = clearLevel(world).at(-1);
+      expect(done?.kind).toBe('levelComplete');
+      const bonus = done?.kind === 'levelComplete' ? done.bonus : undefined;
+      // No fouls used: every allowed foul earns its bonus; no time bonus after 60 s.
+      const fouls = levelConfig(level, DEFAULT_GAMEPLAY_CONFIG).maxFailedAttempts;
+      expect(bonus).toEqual({ level: 500 * level, fouls: 200 * fouls, time: 0, total: 500 * level + 200 * fouls });
+      expectedScore += world.orbs.length * 100 * level + (bonus?.total ?? 0);
+      expect(world.progress.score).toBe(expectedScore);
+      expect(world.progress.totalSeconds).toBeCloseTo(70 * level, 6);
+      expect(world.nextLevel()).toBe(true);
+    }
+    expect(world.level).toBe(4);
+  });
+
+  it('resets fouls every level and loses on the current level', () => {
+    const world = new GameWorld({ spawnOrbs: rowOfOrbs });
+    foulDrawing(world);
+    foulDrawing(world);
+    clearLevel(world);
+    world.nextLevel();
+    expect(world.progress.failedAttempts).toBe(0);
+
+    // Level 2 allows 4 fouls: the fifth loses, on level 2.
+    for (let i = 0; i < 4; i++) foulDrawing(world);
+    expect(world.status).toBe('playing');
+    expect(foulDrawing(world).at(-1)).toEqual({ kind: 'gameOver', status: 'defeat' });
+    expect(world.level).toBe(2);
+    expect(world.progress.score).toBeGreaterThan(0);
+  });
+
+  it('restart goes back to level 1 with a score of 0, from any level', () => {
+    const world = new GameWorld({ spawnOrbs: rowOfOrbs });
+    clearLevel(world);
+    world.nextLevel();
+    clearLevel(world);
+    world.nextLevel();
+    expect(world.level).toBe(3);
+
+    world.restart();
+    expect(world.level).toBe(1);
+    expect(world.config).toEqual(levelConfig(1, DEFAULT_GAMEPLAY_CONFIG));
+    expect(world.orbs).toHaveLength(3);
+    expect(world.progress).toEqual(createProgress(3));
+    expect(world.walls).toEqual([]);
+  });
+
+  it('can start a new game at another level (development)', () => {
+    const world = new GameWorld({ spawnOrbs: rowOfOrbs, firstLevel: 5 });
+    expect(world.level).toBe(5);
+    expect(world.orbs).toHaveLength(7);
+    clearLevel(world);
+    world.nextLevel();
+    world.restart();
+    expect(world.level).toBe(5);
+    expect(world.progress.score).toBe(0);
   });
 });
