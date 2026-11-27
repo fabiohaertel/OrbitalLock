@@ -89,7 +89,7 @@ Functional requirements:
 
 - A drawing must not intersect an active orb.
 - If an active orb collides with a wall while it is being constructed, the drawing attempt must be canceled.
-- Invalid drawing attempts must provide visual feedback.
+- Invalid drawing attempts must provide visual feedback: the failed line breaks apart in red (§5.4).
 - The arena must remain in a consistent state after a canceled drawing.
 - Construction semantics: see D2 (§11.1).
 
@@ -206,6 +206,21 @@ The arena is themed as a soccer field and the orbs as soccer balls. The theme is
 - Inside a captured region, areas that are not captured, such as uncaptured islands, have no net and keep the field's stripes.
 - The net is purely visual. Only active orbs move, and they never enter a captured region, so the net never covers an active ball.
 
+#### Drawing and walls
+
+Drawings and walls look like chalk lines painted on the pitch by a line-marking machine. Like the rest of the theme, this is purely visual: it never changes a rule, a wall's shape, snapping, validation or collisions.
+
+- **Drawing in progress:** a dashed chalk-white line along the path, over a soft translucent halo:
+  - the dashes march along the path towards its tip at a steady speed, and a round tip at the pointer pulses;
+  - dash length, gap and speed are fixed in screen pixels, so the line looks the same at any arena size (§5.1);
+  - the animation is driven by elapsed time, not by the frame rate.
+- **Snap hint:** while drawing, a pulsing gold ring marks where the drawing would attach if it were released now (D1): each end that would snap onto a wall or the arena boundary, or the start point when the path would close into a loop. The hint uses the same simplification and snapping as the release, so it always matches the wall that release creates.
+- **Danger warning:** when an active ball comes closer to the drawing than a warning distance (60 arena units, from the ball's edge to the path), the line heats from white through orange to the failure red, the closer the ball the redder. When the ball is very close, the dashes march faster and the tip pulses faster. Captured balls are ignored. The warning never cancels anything: only a touch does (D2).
+- **Walls:** a committed wall is a freshly painted chalk line: an opaque white core, a soft halo and a thin shadow on the grass. Walls stay clearly stronger than the faint field markings.
+- **Painting a new wall:** when a wall is created, its line is painted from the start of the path to its end in 0.2 s, easing out. The unpainted rest is still dashed, and a bright glow marks the paint front. The wall blocks orbs in full from the moment it is created; the painting is only an animation.
+- **Failed drawing (foul):** the failed line turns red and, after a brief moment, breaks into short pieces (about 24 arena units each) that drift apart, spin, fall and fade out within 0.6 s (§3.7). The break-up is pseudo-random but reproducible.
+- Restarting the game or starting the next level ends any painting or break-up in progress.
+
 ### 5.5 Sound Effects
 
 #### Collision sound
@@ -230,15 +245,17 @@ The arena is themed as a soccer field and the orbs as soccer balls. The theme is
 
 #### Goal sound
 
-- Every time a capture occurs, a short, celebratory goal sound must be played.
+- Every time a capture occurs, a short, celebratory goal sound must be played: a stadium crowd cheering.
 - A capture occurs when a new wall captures at least one orb. Its region becomes a goal net (D4, §5.4), and the goal sound starts at that moment.
 - One wall plays one goal sound, however many orbs or regions it captures.
 - A capture that clears a level also plays the goal sound. It is the only sound for the level clear (no separate sound).
 - No goal sound plays when a wall captures nothing: an empty region, a region over the maximum capture area (D3, D5), or a wall that encloses nothing. No goal sound plays for a foul either.
-- The goal sound is synthesized and about half a second long:
-  - a short swish of the ball hitting the net (noise whose pitch sweeps down);
-  - then a rising three-note major arpeggio (C, E, G) in a soft, retro tone, the last note ringing out and fading.
+- The goal sound is synthesized and lasts at most two seconds:
+  - a crowd in the stands shouting "ahhh": many voices, each with its own pitch, wobble and entry time, plus the breathy roar of a big crowd, shaped into an open "ah" vowel, with a faint echo from the stands;
+  - it swells up quickly, holds briefly, then dies away to silence.
+- It sounds like many voices, not a single tone or jingle.
 - It is mid-pitched, between the low kick and the high whistle, so the three sounds stay distinct, and it is played at a moderate volume.
+- Captures less than two seconds apart may overlap; that only makes the crowd louder.
 - A capture always follows the player's input, so the goal sound plays even if it is the player's first interaction.
 
 #### General
@@ -392,8 +409,13 @@ The initial implementation must satisfy the following scenarios:
 | Watch a moving ball | It rolls in its direction of travel and leaves a fading motion-blur trail |
 | An orb bounces off an arena boundary, a wall or another orb | A soft kick sound plays |
 | Capture an orb | The captured region looks like a goal net with the ball trapped behind it |
+| Draw a line | A dashed chalk line marches towards a pulsing tip |
+| Bring the drawing's end near a wall, the arena edge or its start | A gold ring marks where it would attach |
+| An active ball approaches the drawing | The line heats from white to red |
+| Release a valid drawing | The wall is painted from start to end as a chalk line |
+| A drawing is rejected or canceled | The failed line breaks into red pieces that fall and fade |
 | A drawing is rejected or canceled (a foul) | A single referee whistle blow plays |
-| Capture one or more orbs with a wall | A short goal sound (net swish and rising notes) plays once as the goal net appears |
+| Capture one or more orbs with a wall | A short stadium crowd cheer ("ahhh", at most 2 s) plays once as the goal net appears |
 
 ## 10. Future Features
 

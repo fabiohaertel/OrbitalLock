@@ -124,6 +124,11 @@ export class GameWorld {
     return this.builder.previewPath;
   }
 
+  /** Where the drawing in progress would attach if released now (D1), for the snap hint. */
+  get snapHints(): readonly Vec2[] {
+    return this.builder.snapHints(this.wallList);
+  }
+
   /** Starts a new game at the first level with a score of 0 (REQUIREMENTS §3.8 "restart", D10). */
   restart(): void {
     this.setUpLevel(this.firstLevel);

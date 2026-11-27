@@ -25,59 +25,71 @@ function rms(samples: Float32Array): number {
   return Math.sqrt(sum / samples.length);
 }
 
-/** Start time of each note of the arpeggio, in seconds. */
-function noteStarts(): number[] {
-  return GOAL_SOUND.notes.map((_, index) => GOAL_SOUND.swishSeconds + index * GOAL_SOUND.noteSeconds);
+/** Two-pole high-pass (two cascaded one-pole stages) at `cutoff` Hz. */
+function highPass(samples: Float32Array, cutoff: number): Float32Array {
+  const k = Math.exp((-2 * Math.PI * cutoff) / RATE);
+  let out = Float32Array.from(samples);
+  for (let stage = 0; stage < 2; stage++) {
+    const input = out;
+    out = new Float32Array(input.length);
+    let low = 0;
+    for (let i = 0; i < input.length; i++) {
+      low = (1 - k) * (input[i] as number) + k * low;
+      out[i] = (input[i] as number) - low;
+    }
+  }
+  return out;
 }
 
-describe('synthesizeGoal (REQUIREMENTS §5.5)', () => {
+/** Strongest normalized autocorrelation over lags of 2–10 ms: close to 1 for a steady tone. */
+function periodicity(samples: Float32Array): number {
+  let energy = 0;
+  for (const s of samples) energy += s * s;
+  let best = 0;
+  for (let lag = Math.round(0.002 * RATE); lag <= Math.round(0.01 * RATE); lag++) {
+    let sum = 0;
+    for (let i = lag; i < samples.length; i++) sum += (samples[i] as number) * (samples[i - lag] as number);
+    best = Math.max(best, sum / energy);
+  }
+  return best;
+}
+
+describe('synthesizeGoal: a stadium crowd shouting "ahhh" (REQUIREMENTS §5.5)', () => {
   const goal = synthesizeGoal(RATE);
+  const duration = goalSoundDuration();
+  const sustain = slice(goal, GOAL_SOUND.attackSeconds, duration - GOAL_SOUND.releaseSeconds);
 
-  it('is about half a second long', () => {
-    expect(goalSoundDuration()).toBeGreaterThanOrEqual(0.4);
-    expect(goalSoundDuration()).toBeLessThanOrEqual(0.7);
-    expect(goal.length).toBe(Math.round(goalSoundDuration() * RATE));
-    expect(synthesizeGoal(48_000).length).toBe(Math.round(goalSoundDuration() * 48_000));
+  it('lasts at most two seconds', () => {
+    expect(duration).toBeGreaterThanOrEqual(1.2);
+    expect(duration).toBeLessThanOrEqual(2);
+    expect(goal.length).toBe(Math.round(duration * RATE));
+    expect(synthesizeGoal(48_000).length).toBe(Math.round(duration * 48_000));
   });
 
-  it('opens with a noisy swish, brighter than the notes that follow', () => {
-    const swish = slice(goal, 0.01, GOAL_SOUND.swishSeconds * 0.6);
-    const notes = slice(goal, GOAL_SOUND.swishSeconds, goal.length / RATE);
-    expect(rms(swish)).toBeGreaterThan(0.02);
-    // Noise crosses zero far more often than the arpeggio's tones.
-    expect(pitch(swish)).toBeGreaterThan(2 * pitch(notes));
+  it('swells up, holds, then dies away', () => {
+    const start = rms(slice(goal, 0, 0.08));
+    const loud = rms(sustain);
+    const end = rms(slice(goal, duration - 0.15, duration));
+    expect(start).toBeLessThan(loud * 0.5);
+    expect(end).toBeLessThan(loud * 0.3);
+    expect(end).toBeGreaterThan(0);
   });
 
-  it('plays a rising C-major arpeggio (C, E, G)', () => {
-    const [c, e, g] = GOAL_SOUND.notes;
-    expect(GOAL_SOUND.notes).toHaveLength(3);
-    expect((e ?? 0) / (c ?? 1)).toBeCloseTo(2 ** (4 / 12), 3); // major third
-    expect((g ?? 0) / (c ?? 1)).toBeCloseTo(2 ** (7 / 12), 3); // perfect fifth
-
-    const starts = noteStarts();
-    const measured = GOAL_SOUND.notes.map((_, index) => {
-      const start = (starts[index] ?? 0) + 0.01;
-      return pitch(slice(goal, start, start + GOAL_SOUND.noteSeconds - 0.025));
-    });
-    measured.forEach((value, index) => {
-      expect(value).toBeCloseTo(GOAL_SOUND.notes[index] ?? 0, -1); // within ~5 Hz
-    });
-    expect(measured[1]).toBeGreaterThan(measured[0] ?? Infinity);
-    expect(measured[2]).toBeGreaterThan(measured[1] ?? Infinity);
+  it('sounds like many voices, not a single steady tone', () => {
+    expect(GOAL_SOUND.voices).toBeGreaterThanOrEqual(20);
+    expect(periodicity(sustain)).toBeLessThan(0.6);
   });
 
-  it('lets the last note ring out and fade', () => {
-    const lastStart = noteStarts().at(-1) ?? 0;
-    const early = rms(slice(goal, lastStart + 0.01, lastStart + 0.06));
-    const late = rms(slice(goal, goal.length / RATE - 0.06, goal.length / RATE - 0.01));
-    expect(late).toBeLessThan(early * 0.3);
-    expect(late).toBeGreaterThan(0);
+  it('is shaped like an "ah" vowel: energy in the voice range, little hiss above it', () => {
+    const [first] = GOAL_SOUND.formants;
+    expect(first?.frequency).toBeGreaterThanOrEqual(600);
+    expect(first?.frequency).toBeLessThanOrEqual(900);
+    expect(rms(highPass(sustain, 5000))).toBeLessThan(rms(sustain) * 0.2);
   });
 
   it('is mid-pitched: above the kick, below the whistle', () => {
-    const notes = slice(goal, GOAL_SOUND.swishSeconds, goal.length / RATE);
-    expect(pitch(notes)).toBeGreaterThan(SOFT_KICK.startFrequency * 2);
-    expect(pitch(notes)).toBeLessThan(REFEREE_WHISTLE.frequency / 2);
+    expect(pitch(sustain)).toBeGreaterThan(SOFT_KICK.startFrequency * 2);
+    expect(pitch(sustain)).toBeLessThan(REFEREE_WHISTLE.frequency / 2);
   });
 
   it('is normalized to the configured peak and never clips', () => {

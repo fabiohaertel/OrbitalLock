@@ -13,10 +13,45 @@ export const THEME = {
   fieldMarkingWidth: 1.5,
   arenaBorder: 0x3a4a6b,
   arenaBorderWidth: 2,
-  wall: 0xe6ecff,
-  wallWidth: 3,
-  preview: 0x7fd4ff,
-  previewWidth: 2,
+  /**
+   * Walls are freshly painted chalk lines (REQUIREMENTS §5.4): an opaque white
+   * core over a soft halo, with a thin shadow on the grass. Far stronger than
+   * the faint field markings.
+   */
+  wall: 0xf4f6f2,
+  wallWidth: 3.5,
+  wallHaloWidth: 8,
+  wallHaloAlpha: 0.22,
+  wallShadow: 0x0b1a0d,
+  wallShadowAlpha: 0.3,
+  wallShadowOffset: 1.5,
+  /** Bright spot at the front of the paint while a new wall is painted. */
+  paintGlow: 0xffffff,
+  paintGlowRadius: 6,
+  /**
+   * The drawing in progress is a dashed chalk line whose dashes march towards
+   * the pulsing tip, like a line-marking machine (REQUIREMENTS §5.4). Lengths
+   * in CSS pixels, speed in CSS pixels per second, pulse in Hz.
+   */
+  preview: 0xf4f6f2,
+  previewWidth: 3,
+  previewHaloWidth: 8,
+  previewHaloAlpha: 0.18,
+  previewDash: 10,
+  previewGap: 7,
+  previewDashSpeed: 40,
+  previewTipRadius: 4.5,
+  previewTipPulseHz: 3,
+  /** A ball close to the drawing heats it from chalk white through orange to the failure red. */
+  previewWarm: 0xffa94d,
+  /** Above this danger level the dashes march and the tip pulses faster. */
+  previewAlarmDanger: 0.6,
+  previewAlarmSpeedup: 2.2,
+  /** Gold ring where the drawing would attach if released now (D1). */
+  snapHint: 0xffd166,
+  snapHintRadius: 9,
+  snapHintWidth: 2,
+  snapHintFillAlpha: 0.25,
   failure: 0xff4d5e,
   failureWidth: 4,
   /**
@@ -70,6 +105,17 @@ export const THEME = {
   /** The bundled Orbitron UI font, with system fonts as fallback. */
   fontFamily: 'Orbitron, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
 } as const;
+
+/** Blends two 0xRRGGBB colors: `t` = 0 gives `from`, 1 gives `to` (clamped). */
+export function mixColor(from: number, to: number, t: number): number {
+  const k = Math.max(0, Math.min(1, t));
+  const channel = (shift: number) => {
+    const a = (from >> shift) & 0xff;
+    const b = (to >> shift) & 0xff;
+    return Math.round(a + (b - a) * k);
+  };
+  return (channel(16) << 16) | (channel(8) << 8) | channel(0);
+}
 
 /** Multiplies two 0xRRGGBB colors channel by channel, like a tint. */
 export function multiplyColor(color: number, tint: number): number {

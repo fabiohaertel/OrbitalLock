@@ -9,6 +9,7 @@ import type { Vec2 } from '../geometry/vector';
 import { screenToArena } from '../layout/arenaTransform';
 import type { ScreenLayout } from '../layout/screenLayout';
 import { FailureFlash } from '../render/failureFlash';
+import { WallPaint } from '../render/wallPaint';
 import { WorldRenderer } from '../render/worldRenderer';
 import { GameOverOverlay } from '../ui/gameOverOverlay';
 import { Hud } from '../ui/hud';
@@ -26,6 +27,9 @@ export class GameScene extends Phaser.Scene {
   private readonly world: GameWorld;
   private layout: ScreenLayout;
   private readonly flash = new FailureFlash();
+  private readonly wallPaint = new WallPaint();
+  /** Animation clock in seconds, for the drawing's marching dashes and pulses (purely visual). */
+  private animationTime = 0;
   private created = false;
   private worldRenderer!: WorldRenderer;
   private hud!: Hud;
@@ -120,6 +124,8 @@ export class GameScene extends Phaser.Scene {
     const seconds = deltaMs / 1000;
     this.forward(() => this.world.update(seconds));
     this.flash.tick(seconds);
+    this.wallPaint.tick(seconds);
+    if (seconds > 0) this.animationTime += seconds;
     this.redraw();
   }
 
@@ -172,6 +178,7 @@ export class GameScene extends Phaser.Scene {
   private restart(): void {
     this.world.restart();
     this.flash.clear();
+    this.wallPaint.clear();
     this.redraw();
   }
 
@@ -179,13 +186,15 @@ export class GameScene extends Phaser.Scene {
   private nextLevel(): void {
     if (!this.world.nextLevel()) return;
     this.flash.clear();
+    this.wallPaint.clear();
     this.redraw();
   }
 
   /**
-   * Runs a world call and gives feedback for what it reports: the failure
-   * flash and the referee's whistle for a foul (a failed drawing), the kick
-   * sound for collisions, and the goal sound for a capture. Collisions
+   * Runs a world call and gives feedback for what it reports: the failed line
+   * breaking apart and the referee's whistle for a foul (a failed drawing),
+   * the paint running along a new wall, the kick sound for collisions, and the
+   * goal sound for a capture. Collisions
    * reported by one call (one frame) share one sound (REQUIREMENTS §5.5).
    */
   private forward(call: () => GameEvent[]): void {
@@ -194,6 +203,8 @@ export class GameScene extends Phaser.Scene {
     for (const event of events) {
       if (event.kind === 'attemptFailed') {
         this.flash.show(pathBefore.length >= 2 ? pathBefore : this.world.previewPath);
+      } else if (event.kind === 'wallCreated') {
+        this.wallPaint.start(event.wall);
       }
     }
     const cues = soundCuesFor(events);
@@ -217,8 +228,10 @@ export class GameScene extends Phaser.Scene {
       walls: this.world.walls,
       capturedRegions: this.world.capturedRegions,
       previewPath: this.world.previewPath,
-      failurePath: this.flash.path,
-      failureAlpha: this.flash.alpha,
+      snapHints: this.world.snapHints,
+      failurePieces: this.flash.pieces,
+      wallPaint: (wall) => this.wallPaint.progress(wall),
+      time: this.animationTime,
     });
     this.hud.update(buildHudModel(this.world.progress, this.world.config), this.time.now);
     this.overlay.update(buildEndScreenModel(this.world.progress));

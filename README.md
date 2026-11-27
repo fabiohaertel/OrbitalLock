@@ -16,17 +16,19 @@ games, but your walls can take any shape.
   walls you draw and off each other.
 - Press and drag (mouse or touch) to draw a wall. It can be straight, diagonal
   or completely free-form. A click or tap without dragging draws nothing.
+  The drawing is a dashed chalk line; a gold ring shows where it will attach
+  when you release, and the line turns red as a ball gets close.
 - When you release, a valid path becomes a permanent wall. A wall encloses a
   region when it forms a closed loop, or when it starts and ends on other walls
   or the field's edges.
 - An enclosed region captures every ball inside it, as long as it is no larger
   than the maximum capture area (15% of the field). The region becomes a goal
-  net with the balls trapped behind it, and you hear a goal jingle. A region
+  net with the balls trapped behind it, and the crowd cheers. A region
   with no balls captures nothing, and a region that is too large just stays a
   wall: neither is a foul.
 - A drawing is a **foul** if it passes through a ball, or if a ball touches the
-  path while you are still drawing it. The referee blows the whistle, and the
-  fouls card in the HUD fills a pip.
+  path while you are still drawing it. The referee blows the whistle, the
+  failed line breaks apart, and the fouls card in the HUD fills a pip.
 - **Clear a level** by capturing every ball, then start the next, harder one:
   more and faster balls, smaller nets and fewer fouls allowed. Levels never
   end. **Lose** when you commit more fouls than the level allows (4 on level 1,
@@ -47,15 +49,15 @@ The full rules are in [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
   units per second, on a 1000 × 625 field) with a 15% maximum capture area,
   up to 16 balls at speed 300 with 8%
 - Soccer theme: a striped green field with faint markings, shaded balls that
-  roll in their direction of travel with a motion-blur trail, and goal nets
-  over captured regions
+  roll in their direction of travel with a motion-blur trail, walls painted
+  like chalk lines, and goal nets over captured regions
 - Stadium-scoreboard HUD in the bundled Orbitron font: cards for the level,
   captured and remaining balls, the level's time, score (it pops when it goes
   up) and fouls (shown as pips), a pill restart button, and animated
   level-cleared (bonus breakdown, "Next level") and defeat (level reached,
   final score and time) screens
 - Synthesized sound effects (no audio files): a soft kick on every bounce, a
-  referee whistle on every foul, and a short goal jingle on every capture. The
+  referee whistle on every foul, and a stadium crowd cheer on every capture. The
   game runs silently if the browser has no Web Audio support
 - Responsive layout for desktop, tablet and mobile, in portrait and landscape;
   mouse and touch input

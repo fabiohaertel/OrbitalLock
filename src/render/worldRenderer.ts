@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import type { ArenaDimensions } from '../config/gameConfig';
 import { clipPolygonToXRange, polygonArea, type Polygon } from '../geometry/polygon';
+import { polylineLength } from '../geometry/polyline';
 import type { Region } from '../geometry/regions';
 import type { Segment } from '../geometry/segment';
 import type { Vec2 } from '../geometry/vector';
@@ -8,11 +9,14 @@ import type { ArenaTransform } from '../layout/arenaTransform';
 import type { Orb } from '../physics/orb';
 import type { Wall } from '../drawing/wall';
 import { BallMotion } from './ballMotion';
+import { dashSegments, slicePath } from './dashedPath';
+import { previewDanger } from './drawingHints';
+import type { FailurePiece } from './failureFlash';
 import { netCords } from './goalNet';
 import { projectBallPatches, soccerBallSphere, type SpherePatch } from './soccerBall';
 import { BALL_LEATHER_RADIUS_RATIO, ensureBallShadingTexture } from './soccerBallTexture';
 import { fieldMarkings, fieldStripes, type FieldMarking, type FieldStripe } from './soccerField';
-import { multiplyColor, THEME } from './theme';
+import { mixColor, multiplyColor, THEME } from './theme';
 
 /** Points per patch edge for rolling balls: smooth at on-screen ball sizes, cheap to project every frame. */
 const BALL_POINTS_PER_EDGE = 4;
@@ -23,26 +27,34 @@ export interface WorldView {
   readonly walls: readonly Wall[];
   readonly capturedRegions: readonly Region[];
   readonly previewPath: readonly Vec2[];
-  readonly failurePath: readonly Vec2[];
-  readonly failureAlpha: number;
+  /** Where the drawing in progress would attach if released now (D1). */
+  readonly snapHints: readonly Vec2[];
+  /** Pieces of a failed drawing breaking apart. */
+  readonly failurePieces: readonly FailurePiece[];
+  /** How much of each wall is painted, 0..1; new walls are painted from start to end. */
+  readonly wallPaint: (wall: Wall) => number;
+  /** Animation clock in seconds: drives the marching dashes and pulses, never the game. */
+  readonly time: number;
 }
 
 /**
  * Draws the soccer-field arena, captured regions as goal nets, walls, orbs as
- * soccer balls, the drawing preview and the failure flash (REQUIREMENTS §5.4,
- * §8.5).
+ * soccer balls, the chalk-line drawing preview with its snap and danger
+ * hints, and the failed line breaking apart (REQUIREMENTS §5.4, §8.5).
  *
  * Three layers, bottom to top, all positioned and scaled by the arena transform
  * so everything is drawn in arena coordinates:
- * 1. field, captured-region backdrops and walls (Graphics);
+ * 1. field, captured-region backdrops and chalk-line walls (Graphics);
  * 2. balls (Container): motion-blur trails beneath all balls, then each
  *    ball's leather and rolling patches (Graphics), then one fixed shading
  *    image per ball, so the light does not turn as the ball rolls;
  * 3. net cords over captured regions, so captured balls sit behind the net;
- *    then the drawing preview, failure flash and arena border (Graphics).
+ *    then the drawing preview, snap hints, failure pieces and arena
+ *    border (Graphics).
  *
  * It only reads game state; it never changes it. Ball rolling and trails are
- * derived from how orb positions change between frames (`BallMotion`).
+ * derived from how orb positions change between frames (`BallMotion`); the
+ * marching dashes and pulses from the view's animation clock.
  */
 export class WorldRenderer {
   private readonly scene: Phaser.Scene;
@@ -64,6 +76,11 @@ export class WorldRenderer {
   private readonly netCache = new WeakMap<Region, readonly Segment[]>();
   /** Arena units per CSS pixel, so lines keep a constant on-screen width at any scale. */
   private unitsPerCssPixel = 1;
+  /** Animation state: clock of the last frame, dash march (CSS pixels), pulse phase and current danger. */
+  private lastTime = 0;
+  private marchCssPixels = 0;
+  private pulsePhase = 0;
+  private danger = 0;
 
   constructor(scene: Phaser.Scene, arena: ArenaDimensions, transform: ArenaTransform, pixelRatio: number) {
     this.scene = scene;
@@ -98,29 +115,121 @@ export class WorldRenderer {
     this.drawField();
     this.drawCapturedRegions(view.capturedRegions);
 
-    g.lineStyle(this.width(THEME.wallWidth), THEME.wall, 1);
-    for (const wall of view.walls) {
-      strokePath(g, wall.path);
-    }
+    this.advanceAnimation(view);
+    this.drawWalls(view.walls, view.wallPaint);
 
     this.drawBalls(view.orbs);
 
     const f = this.foreground;
     f.clear();
     this.drawNets(view.capturedRegions);
+    this.drawPreview(view.previewPath, view.snapHints);
 
-    if (view.previewPath.length >= 2) {
-      f.lineStyle(this.width(THEME.previewWidth), THEME.preview, 0.9);
-      strokePath(f, view.previewPath);
-    }
-
-    if (view.failurePath.length >= 2 && view.failureAlpha > 0) {
-      f.lineStyle(this.width(THEME.failureWidth), THEME.failure, view.failureAlpha);
-      strokePath(f, view.failurePath);
+    for (const piece of view.failurePieces) {
+      if (piece.points.length < 2 || piece.alpha <= 0) continue;
+      f.lineStyle(this.width(THEME.failureWidth), THEME.failure, piece.alpha);
+      strokePath(f, piece.points);
     }
 
     f.lineStyle(this.width(THEME.arenaBorderWidth), THEME.arenaBorder, 1);
     f.strokeRect(0, 0, this.arena.width, this.arena.height);
+  }
+
+  /**
+   * Advances the marching dashes and the pulse from the animation clock. They
+   * speed up while a ball threatens the drawing; integrating the speed (rather
+   * than multiplying the clock) keeps them from jumping when it changes.
+   */
+  private advanceAnimation(view: WorldView): void {
+    const dt = Math.max(0, Math.min(0.25, view.time - this.lastTime));
+    this.lastTime = view.time;
+    this.danger = view.previewPath.length >= 2 ? previewDanger(view.previewPath, view.orbs) : 0;
+    const speedup = this.danger >= THEME.previewAlarmDanger ? THEME.previewAlarmSpeedup : 1;
+    this.marchCssPixels += THEME.previewDashSpeed * speedup * dt;
+    this.pulsePhase += 2 * Math.PI * THEME.previewTipPulseHz * speedup * dt;
+  }
+
+  /** 0..1, rising and falling with the tip and snap-hint pulse. */
+  private get pulse(): number {
+    return 0.5 + 0.5 * Math.sin(this.pulsePhase);
+  }
+
+  /**
+   * Walls as freshly painted chalk lines (REQUIREMENTS §5.4): a thin shadow,
+   * a soft halo and an opaque core. A new wall is painted from its start to
+   * its end; the unpainted rest is still dashed, with a glow at the paint front.
+   */
+  private drawWalls(walls: readonly Wall[], paint: (wall: Wall) => number): void {
+    const g = this.background;
+    const painted = walls.map((wall) => {
+      const progress = paint(wall);
+      if (progress >= 1) return { wall, solid: wall.path, rest: [] as Vec2[], length: 0, progress };
+      const length = polylineLength(wall.path);
+      const front = length * Math.max(0, progress);
+      return { wall, solid: slicePath(wall.path, 0, front), rest: slicePath(wall.path, front, length), length, progress };
+    });
+
+    const shadow = this.width(THEME.wallShadowOffset);
+    g.lineStyle(this.width(THEME.wallWidth), THEME.wallShadow, THEME.wallShadowAlpha);
+    for (const { solid } of painted) strokePath(g, solid.map((p) => ({ x: p.x + shadow, y: p.y + shadow })));
+    g.lineStyle(this.width(THEME.wallHaloWidth), THEME.wall, THEME.wallHaloAlpha);
+    for (const { solid } of painted) strokePath(g, solid);
+    g.lineStyle(this.width(THEME.wallWidth), THEME.wall, 1);
+    for (const { solid } of painted) strokePath(g, solid);
+
+    for (const { rest, solid, length, progress } of painted) {
+      if (progress >= 1 || length <= 0) continue;
+      g.lineStyle(this.width(THEME.previewWidth), THEME.preview, 1);
+      for (const dash of this.dashes(rest)) strokePath(g, dash);
+      const front = solid.at(-1) ?? rest[0];
+      if (front !== undefined) {
+        g.fillStyle(THEME.paintGlow, 0.85);
+        g.fillCircle(front.x, front.y, this.width(THEME.paintGlowRadius));
+      }
+    }
+  }
+
+  /** The marching dashes of a chalk line, sized in CSS pixels so they look the same at any scale. */
+  private dashes(path: readonly Vec2[]): Vec2[][] {
+    return dashSegments(
+      path,
+      this.width(THEME.previewDash),
+      this.width(THEME.previewGap),
+      this.width(this.marchCssPixels),
+    );
+  }
+
+  /**
+   * The drawing in progress (REQUIREMENTS §5.4): a dashed chalk line marching
+   * towards a pulsing tip, heating from white through orange to red as an
+   * active ball gets close, and a gold ring where it would attach (D1).
+   */
+  private drawPreview(path: readonly Vec2[], snapHints: readonly Vec2[]): void {
+    if (path.length < 2) return;
+    const f = this.foreground;
+    const danger = this.danger;
+    const color =
+      danger < 0.5
+        ? mixColor(THEME.preview, THEME.previewWarm, danger * 2)
+        : mixColor(THEME.previewWarm, THEME.failure, (danger - 0.5) * 2);
+    const pulse = this.pulse;
+
+    f.lineStyle(this.width(THEME.previewHaloWidth), color, THEME.previewHaloAlpha);
+    strokePath(f, path);
+    f.lineStyle(this.width(THEME.previewWidth), color, 1);
+    for (const dash of this.dashes(path)) strokePath(f, dash);
+
+    const tip = path.at(-1) as Vec2;
+    f.fillStyle(color, 0.6 + 0.4 * pulse);
+    f.fillCircle(tip.x, tip.y, this.width(THEME.previewTipRadius) * (0.85 + 0.35 * pulse));
+
+    const ring = this.width(THEME.snapHintRadius) * (1 + 0.15 * pulse);
+    for (const hint of snapHints) {
+      f.fillStyle(THEME.snapHint, THEME.snapHintFillAlpha);
+      f.fillCircle(hint.x, hint.y, ring);
+      f.lineStyle(this.width(THEME.snapHintWidth), THEME.snapHint, 1);
+      f.strokeCircle(hint.x, hint.y, ring);
+    }
   }
 
   /** Green mowing stripes plus faint pitch markings (REQUIREMENTS §5.4). */

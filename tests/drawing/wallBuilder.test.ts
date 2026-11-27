@@ -243,3 +243,72 @@ describe('WallBuilder — drawing safety (REQUIREMENTS §3.7)', () => {
     expect(walls).toHaveLength(1);
   });
 });
+
+/** Presses and drags through the corner points without releasing. */
+function drag(builder: WallBuilder, corners: readonly [number, number][]): void {
+  const [first, ...rest] = corners;
+  if (first === undefined) throw new Error('need at least one point');
+  builder.begin(at(first[0], first[1]));
+  let previous = first;
+  for (const corner of rest) {
+    for (let i = 1; i <= 20; i++) {
+      const t = i / 20;
+      builder.move(at(previous[0] + (corner[0] - previous[0]) * t, previous[1] + (corner[1] - previous[1]) * t), []);
+    }
+    previous = corner;
+  }
+}
+
+describe('WallBuilder — snap hints for the drawing in progress (REQUIREMENTS §5.4, D1)', () => {
+  it('has no hints when not drawing, or for a press that has not started a drawing', () => {
+    const builder = new WallBuilder(ARENA, options);
+    expect(builder.snapHints([])).toEqual([]);
+    builder.begin(at(8, 10));
+    expect(builder.snapHints([])).toEqual([]);
+  });
+
+  it('shows no hint for ends far from any wall or edge', () => {
+    const builder = new WallBuilder(ARENA, options);
+    drag(builder, [[300, 300], [400, 350]]);
+    expect(builder.snapHints([])).toEqual([]);
+  });
+
+  it('marks the ends that would snap onto the arena boundary, where the wall will attach', () => {
+    const builder = new WallBuilder(ARENA, options);
+    drag(builder, [[8, 10], [500, 500], [620, 617]]);
+    const hints = builder.snapHints([]);
+    expect(hints).toHaveLength(2);
+    expectPoint(hints[0], 0, 10);
+    expectPoint(hints[1], 620, ARENA.height);
+
+    const wall = expectWall(builder.end(at(620, 617), [], []));
+    expectPoint(wall.path[0], hints[0]?.x ?? NaN, hints[0]?.y ?? NaN);
+    expectPoint(wall.path.at(-1), hints[1]?.x ?? NaN, hints[1]?.y ?? NaN);
+  });
+
+  it('marks an end that would snap onto an existing wall', () => {
+    const builder = new WallBuilder(ARENA, options);
+    const vertical = expectWall(draw(builder, [[500, 5], [500, 620]]));
+    drag(builder, [[300, 300], [490, 300]]);
+    const hints = builder.snapHints([vertical]);
+    expect(hints).toHaveLength(1);
+    expectPoint(hints[0], 500, 300);
+  });
+
+  it('marks the start point when the path would close into a loop', () => {
+    const builder = new WallBuilder(ARENA, options);
+    drag(builder, [[300, 300], [400, 300], [400, 400], [300, 400], [300, 305]]);
+    const hints = builder.snapHints([]);
+    expect(hints).toHaveLength(1);
+    expectPoint(hints[0], 300, 300);
+    expect(expectWall(builder.end(at(300, 305), [], [])).closed).toBe(true);
+  });
+
+  it('clears the hints once the drawing ends', () => {
+    const builder = new WallBuilder(ARENA, options);
+    drag(builder, [[8, 10], [500, 500]]);
+    expect(builder.snapHints([])).toHaveLength(1);
+    builder.end(at(500, 500), [], []);
+    expect(builder.snapHints([])).toEqual([]);
+  });
+});

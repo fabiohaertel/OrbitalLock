@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { multiplyColor, THEME } from '../../src/render/theme';
+import { mixColor, multiplyColor, THEME } from '../../src/render/theme';
 
 describe('multiplyColor (dims captured balls, REQUIREMENTS §5.4)', () => {
   it('multiplies each channel like a tint', () => {
@@ -7,6 +7,28 @@ describe('multiplyColor (dims captured balls, REQUIREMENTS §5.4)', () => {
     expect(multiplyColor(0x000000, 0x7a8499)).toBe(0x000000);
     expect(multiplyColor(0x808080, 0xff0000)).toBe(0x800000);
     expect(multiplyColor(0x123456, 0xffffff)).toBe(0x123456);
+  });
+});
+
+describe('mixColor (heats the drawing as a ball gets close, REQUIREMENTS §5.4)', () => {
+  it('blends channel by channel and clamps t', () => {
+    expect(mixColor(0x000000, 0xffffff, 0)).toBe(0x000000);
+    expect(mixColor(0x000000, 0xffffff, 1)).toBe(0xffffff);
+    expect(mixColor(0x000000, 0xff8040, 0.5)).toBe(0x804020);
+    expect(mixColor(0x123456, 0xabcdef, -1)).toBe(0x123456);
+    expect(mixColor(0x123456, 0xabcdef, 2)).toBe(0xabcdef);
+  });
+});
+
+describe('chalk-line walls (REQUIREMENTS §5.4)', () => {
+  it('are opaque and wider than the faint field markings, so the two are never confused', () => {
+    expect(THEME.wallWidth).toBeGreaterThan(THEME.fieldMarkingWidth * 2);
+    expect(THEME.fieldMarkingAlpha).toBeLessThan(0.5);
+  });
+
+  it('use a snap hint color distinct from the chalk white and the failure red', () => {
+    expect(THEME.snapHint).not.toBe(THEME.wall);
+    expect(THEME.snapHint).not.toBe(THEME.failure);
   });
 });
 

@@ -1,9 +1,9 @@
 import type { ArenaDimensions, GameplayConfig } from '../config/gameConfig';
-import { polylineLength } from '../geometry/polyline';
+import { polylineLength, simplifyPolyline } from '../geometry/polyline';
 import { distanceSquared, type Vec2 } from '../geometry/vector';
 import type { Orb } from '../physics/orb';
 import { DrawingSession, createDrawingOptions, type DrawingOptions, type PointerInput } from './drawingSession';
-import { findSelfIntersections, findTouchedOrb, snapEndpoint } from './pathAnalysis';
+import { findSelfIntersections, findTouchedOrb, snapEndpoint, type SnapResult } from './pathAnalysis';
 import { wallSegments, type Wall } from './wall';
 
 /** Default endpoint snapping distance in arena units (D1). */
@@ -146,16 +146,50 @@ export class WallBuilder {
     return { kind: 'wallCreated', wall };
   }
 
+  /**
+   * Where the drawing in progress would attach if it were released now (D1),
+   * for the snap hint (REQUIREMENTS §5.4): the start point when the path would
+   * close into a loop, otherwise each end that would snap onto a wall or the
+   * arena boundary. Uses the same simplification and snapping as `end`, so the
+   * hint matches the wall that release creates. Empty when not drawing.
+   */
+  snapHints(walls: readonly Wall[]): Vec2[] {
+    if (!this.session.isDrawing) return [];
+    const path = simplifyPolyline(this.session.previewPath, this.options.drawing.simplifyTolerance);
+    if (path.length < 2) return [];
+    const ends = this.resolveEnds(path, walls);
+    if (ends.kind === 'loop') return [ends.start];
+    return [ends.start, ends.end].filter((snap) => snap.anchor !== 'free').map((snap) => snap.point);
+  }
+
+  /** Decides loop closure or endpoint snapping (D1) for a finished path. */
+  private resolveEnds(
+    path: readonly Vec2[],
+    walls: readonly Wall[],
+  ): { readonly kind: 'loop'; readonly start: Vec2 } | { readonly kind: 'open'; readonly start: SnapResult; readonly end: SnapResult } {
+    const first = path[0] as Vec2;
+    const last = path[path.length - 1] as Vec2;
+    const snapSq = this.options.snapDistance * this.options.snapDistance;
+    // Closed loop: at least a triangle whose end returns near its start.
+    if (path.length >= 4 && distanceSquared(first, last) <= snapSq) {
+      return { kind: 'loop', start: first };
+    }
+    const segments = wallSegments(walls);
+    return {
+      kind: 'open',
+      start: snapEndpoint(first, segments, this.arena, this.options.snapDistance),
+      end: snapEndpoint(last, segments, this.arena, this.options.snapDistance),
+    };
+  }
+
   /** Applies loop closure or endpoint snapping (D1) and records self-crossings. */
   private shapeWall(rawPath: readonly Vec2[], walls: readonly Wall[]): Wall {
     const path = [...rawPath];
     const first = path[0] as Vec2;
-    const last = path[path.length - 1] as Vec2;
-    const snapSq = this.options.snapDistance * this.options.snapDistance;
     const id = this.nextWallId;
+    const ends = this.resolveEnds(path, walls);
 
-    // Closed loop: at least a triangle whose end returns near its start.
-    if (path.length >= 4 && distanceSquared(first, last) <= snapSq) {
+    if (ends.kind === 'loop') {
       path[path.length - 1] = first;
       return {
         id,
@@ -167,9 +201,7 @@ export class WallBuilder {
       };
     }
 
-    const segments = wallSegments(walls);
-    const start = snapEndpoint(first, segments, this.arena, this.options.snapDistance);
-    const end = snapEndpoint(last, segments, this.arena, this.options.snapDistance);
+    const { start, end } = ends;
     path[0] = start.point;
     path[path.length - 1] = end.point;
 
